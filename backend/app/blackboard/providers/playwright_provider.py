@@ -49,6 +49,8 @@ class CourseDumpResult:
     course_url: str
     url_before_content_link: str
     content_link_followed: str | None
+    follow_link_text_requested: str | None
+    follow_link_result: str | None
     final_url: str
 
 # Candidate selectors for detecting the logged-in user's DISPLAY NAME only.
@@ -242,7 +244,12 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         output_path.write_text(html, encoding="utf-8")
         return output_path
 
-    def dump_course_html(self, course_id: str, output_path: Path) -> CourseDumpResult:
+    def dump_course_html(
+        self,
+        course_id: str,
+        output_path: Path,
+        follow_link_text: str | None = None,
+    ) -> CourseDumpResult:
         """Saves the raw HTML of a single course's content page to disk,
         the same way dump_courses_html() does for the course list.
 
@@ -251,6 +258,13 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         route — need to see what's actually on that page (and whether
         Blackboard redirected somewhere else) to fix OriginalCourseParser's
         selectors, or _find_content_link's link-following, with evidence.
+
+        `follow_link_text`: after the automatic content-link follow lands on
+        the course's landing page, optionally follow ONE more link matching
+        this text (case-insensitive substring). Added after confirming that
+        page is the course's left-nav menu, not assignments themselves —
+        this lets a specific content area (e.g. "Assessments", "Unidad 1")
+        be inspected one level deeper without DevTools.
         """
         course = self._resolve_course(course_id)
 
@@ -265,6 +279,13 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                 page.goto(content_href)
                 self._wait_for_render(page)
 
+            follow_link_result = None
+            if follow_link_text:
+                follow_link_result = self._find_link_by_text(page, follow_link_text)
+                if follow_link_result:
+                    page.goto(follow_link_result)
+                    self._wait_for_render(page)
+
             html = page.content()
             final_url = page.url
 
@@ -275,6 +296,8 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             course_url=course.url,
             url_before_content_link=url_before_content_link,
             content_link_followed=content_href,
+            follow_link_text_requested=follow_link_text,
+            follow_link_result=follow_link_result,
             final_url=final_url,
         )
 
@@ -379,6 +402,29 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             except Exception:  # noqa: BLE001
                 continue
             if not CONTENT_LINK_PATTERN.search(text):
+                continue
+            href = link.get_attribute("href")
+            if href and is_navigable_url(href):
+                return href
+        return None
+
+    def _find_link_by_text(self, page, text: str) -> str | None:
+        """Finds a link whose visible text contains `text` (case-insensitive
+        substring), skipping non-navigable hrefs the same way
+        _find_content_link does. Used by dump_course_html's follow_link_text
+        to drill into a specific named content area for inspection.
+        """
+        needle = text.strip().lower()
+        try:
+            links = page.locator("a").all()
+        except Exception:  # noqa: BLE001
+            return None
+        for link in links:
+            try:
+                link_text = link.text_content(timeout=1000) or ""
+            except Exception:  # noqa: BLE001
+                continue
+            if needle not in link_text.lower():
                 continue
             href = link.get_attribute("href")
             if href and is_navigable_url(href):

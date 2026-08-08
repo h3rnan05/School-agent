@@ -201,3 +201,65 @@ def test_dump_course_html_skips_non_navigable_content_link_instead_of_crashing(t
 
     assert result.content_link_followed == real_content_url
     assert "#content" not in fake_page.goto_calls
+
+
+def test_dump_course_html_follows_extra_link_by_text(tmp_path, monkeypatch):
+    """Real UDEM finding: the auto-followed content link lands on the
+    course's left-nav menu, not assignments — follow_link_text lets a
+    specific content area (e.g. "Assessments") be inspected one level
+    deeper without DevTools."""
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
+    provider = make_provider_with_cached_course(tmp_path, course)
+    entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    content_url = "https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?course_id=_424872_1"
+    assessments_url = "https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?content_id=_999_1"
+    links = [
+        _FakeLink(text="Course Content", href=content_url),
+        _FakeLink(text="Assessments", href=assessments_url),
+        _FakeLink(text="Unidad 1", href="https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?content_id=_998_1"),
+    ]
+    fake_page = _FakePage(html="<html><body>assessments content</body></html>", url=entry_url, links=links)
+
+    @contextmanager
+    def fake_authenticated_browser():
+        yield (None, fake_page)
+
+    monkeypatch.setattr(provider, "_authenticated_browser", fake_authenticated_browser)
+
+    output_path = tmp_path / "course_424872.html"
+    result = provider.dump_course_html("_424872_1", output_path, follow_link_text="Assessments")
+
+    assert result.follow_link_text_requested == "Assessments"
+    assert result.follow_link_result == assessments_url
+    assert result.final_url == assessments_url
+    assert fake_page.goto_calls[-1] == assessments_url
+
+
+def test_dump_course_html_follow_link_text_not_found_reports_none(tmp_path, monkeypatch):
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
+    provider = make_provider_with_cached_course(tmp_path, course)
+    entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    content_url = "https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?course_id=_424872_1"
+    links = [_FakeLink(text="Course Content", href=content_url)]
+    fake_page = _FakePage(html="<html></html>", url=entry_url, links=links)
+
+    @contextmanager
+    def fake_authenticated_browser():
+        yield (None, fake_page)
+
+    monkeypatch.setattr(provider, "_authenticated_browser", fake_authenticated_browser)
+
+    output_path = tmp_path / "course_424872.html"
+    result = provider.dump_course_html("_424872_1", output_path, follow_link_text="Nonexistent Area")
+
+    assert result.follow_link_text_requested == "Nonexistent Area"
+    assert result.follow_link_result is None
+    assert result.final_url == content_url  # stayed on the auto-followed content page

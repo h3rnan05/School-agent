@@ -132,7 +132,14 @@ def debug_dump_courses_html() -> None:
 
 @cli.command(name="debug-dump-course-html")
 @click.argument("course_id")
-def debug_dump_course_html(course_id: str) -> None:
+@click.option(
+    "--follow",
+    "follow_link_text",
+    default=None,
+    help='Also follow one more link whose text contains this (e.g. --follow "Assessments") '
+    "to inspect a specific content area one level deeper.",
+)
+def debug_dump_course_html(course_id: str, follow_link_text: str | None) -> None:
     """Save the raw HTML of a single course's content page to a local file.
 
     Uses your already-saved session. Read-only. Prints which URL it
@@ -152,7 +159,7 @@ def debug_dump_course_html(course_id: str) -> None:
         sys.exit(1)
 
     try:
-        result = dump(course_id, settings.debug_html_dir / f"course_{course_id}.html")
+        result = dump(course_id, settings.debug_html_dir / f"course_{course_id}.html", follow_link_text)
     except BlackboardError as exc:
         click.echo(f"Could not dump the course page: {exc}", err=True)
         sys.exit(1)
@@ -164,6 +171,11 @@ def debug_dump_course_html(course_id: str) -> None:
         click.echo(f"Followed a link matching 'assignments/content/coursework': {result.content_link_followed}")
     else:
         click.echo("No link matching 'assignments/content/coursework' was found on that page.")
+    if result.follow_link_text_requested:
+        if result.follow_link_result:
+            click.echo(f"Followed --follow {result.follow_link_text_requested!r}: {result.follow_link_result}")
+        else:
+            click.echo(f"--follow {result.follow_link_text_requested!r}: no matching link found on that page.")
     click.echo(f"final page URL (what the saved HTML is from): {result.final_url}\n")
     click.echo("If the final URL doesn't look like a content/assignments listing, that's the")
     click.echo("real problem — share these URLs (with the numeric course id is fine) and a")

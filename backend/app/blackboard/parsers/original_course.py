@@ -3,11 +3,22 @@ running Blackboard's Original Course View (regardless of whether the
 institution's overall navigation is Original Experience or Ultra
 Experience — Phase 2.1 confirmed UDEM mixes both).
 
-This is the parser that was validated with synthetic fixtures in Phase 2
-(tests/blackboard/fixtures/assignments_original.html). No real UDEM course
-HTML was available while extending it for Phase 2.1, so the selector
-candidates are unchanged from Phase 2 and still need verification against
-a real Original Course View course — see backend/README.md.
+Phase 2.1 finding (real UDEM run): a real course's content page rendered
+its persistent left-hand COURSE MENU (Home Page, Announcements, Discussions,
+My Grades, custom instructor-named areas like "Unidad 1", "Assessments",
+etc.) as `<li id="paletteItem:_XXX_1">` elements — Blackboard's own
+internal name for course-menu items ("palette"). The old, broader
+`li[id]` selector matched those too, producing fake "assignments" with no
+due dates that were actually just navigation entries. Those are now
+explicitly excluded (see NON_CONTENT_ID_PREFIXES) rather than treated as
+content — an empty result on a menu/palette page is the honest, correct
+answer, not a selector failure.
+
+The real assignments/graded items are one level deeper, inside a specific
+content area (e.g. clicking "Unidad 1" or "Assessments") — that page's
+structure isn't confirmed yet. This parser's item-selector candidates are
+otherwise unchanged from Phase 2, validated only against synthetic
+fixtures. See parsers/DOM_NOTES.md and backend/README.md.
 """
 from __future__ import annotations
 
@@ -43,6 +54,17 @@ ASSIGNMENT_ITEM_SELECTORS = [
     "div.contentListItem",
 ]
 
+# Confirmed real UDEM markup: the persistent course (left-nav) menu renders
+# each entry as an element with an id starting with "paletteItem:" —
+# Blackboard's internal name for these. They're never assignments/content,
+# regardless of which broader selector above happens to also match them.
+NON_CONTENT_ID_PREFIXES = ("paletteitem:",)
+
+
+def _is_menu_item(item: Tag) -> bool:
+    item_id = (attr_str(item, "id") or "").lower()
+    return any(item_id.startswith(prefix) for prefix in NON_CONTENT_ID_PREFIXES)
+
 
 class OriginalCourseParser:
     """Parses a course content/assignments listing page (Original Course View)."""
@@ -57,11 +79,17 @@ class OriginalCourseParser:
     ) -> list[Assignment]:
         now = now or datetime.now(ZoneInfo("UTC"))
         soup = BeautifulSoup(html, "html.parser")
-        items = first_matching(soup, ASSIGNMENT_ITEM_SELECTORS)
+        candidates = first_matching(soup, ASSIGNMENT_ITEM_SELECTORS)
+        items = [item for item in candidates if not _is_menu_item(item)]
 
-        if not items:
+        if candidates and not items:
+            logger.info(
+                "OriginalCourseParser: every matched item was the course's left-nav menu "
+                "(paletteItem:*), not real content — this page is the course menu, not an "
+                "assignment listing. See parsers/DOM_NOTES.md for the real content area."
+            )
+        elif not items:
             logger.warning("OriginalCourseParser: no assignment items matched any known selector")
-            return []
 
         assignments: list[Assignment] = []
         for item in items:

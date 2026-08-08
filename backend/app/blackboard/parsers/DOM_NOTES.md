@@ -71,6 +71,28 @@ now that it targets `courseMain` directly, and share what
 `OriginalCourseParser`'s selectors find (or don't) against the real
 result.
 
+**Resolved (real run):** `courseMain` → the auto-followed content link
+lands on the course's own left-nav menu (Blackboard's internal "palette"),
+not assignments. Confirmed by real log output: every matched item had an
+id like `paletteItem:_3467040_1`, and the "assignments" produced were
+actually menu entries — "Home Page", "My Grades", "Announcements",
+"Discussions", instructor-named content areas like "Unidad 1" and
+"Assessments" — all with `NO_DUE_DATE` (correct: menu entries don't have
+due dates; the earlier version was fabricating fake assignments from them).
+
+**Fix applied:** `original_course.py` now excludes any item whose id
+starts with `paletteitem:` (case-insensitive) before parsing — confirmed
+real prefix, not a guess. A page that's *only* the course menu now
+correctly returns `[]` with an info-level log explaining why, instead of
+inventing assignments.
+
+**Still open:** what real assignments look like is unconfirmed — they're
+presumably one level deeper, inside a content area like "Assessments" or
+"Unidad 1". `dump_course_html()` / `blackboard debug-dump-course-html
+<id> --follow "Assessments"` now supports drilling into one specific
+named menu link to capture that page's real HTML for the next round of
+selector work.
+
 ## Assignments — Ultra Course View (`parsers/ultra_course.py`)
 
 Not attempted. `UltraCourseParser` is a stub that returns `[]` with a

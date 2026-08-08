@@ -94,3 +94,21 @@ def test_timing_status_upcoming_vs_overdue(load_fixture):
 
     quiz = _by_title(result, "Midterm Quiz")  # due Aug 9 08:00, now is Aug 8 12:00
     assert quiz.timing_status == AssignmentTimingStatus.UPCOMING
+
+
+def test_course_menu_items_are_not_treated_as_assignments(load_fixture):
+    """Real UDEM finding: the persistent left-nav course menu renders as
+    <li id="paletteItem:_XXX_1"> — matches the broad li[id] selector, but
+    is navigation, not content. Must come back empty, not fake assignments
+    named "Home Page" / "My Grades" with no due dates."""
+    html = load_fixture("course_menu_udem_palette.html")
+    result = _parse(html)
+    assert result == []
+
+
+def test_menu_item_without_a_link_does_not_produce_a_warning_crash(load_fixture):
+    """paletteItem:_3534779_1 in the fixture has no <a> at all — must be
+    filtered out with the rest of the menu, not hit the "no link" path."""
+    html = load_fixture("course_menu_udem_palette.html")
+    result = _parse(html)  # must not raise
+    assert isinstance(result, list)

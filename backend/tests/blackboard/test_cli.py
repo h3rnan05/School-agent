@@ -177,11 +177,13 @@ class _FakeCourseDumpResult:
         self.course_url = kwargs["course_url"]
         self.url_before_content_link = kwargs["url_before_content_link"]
         self.content_link_followed = kwargs["content_link_followed"]
+        self.follow_link_text_requested = kwargs.get("follow_link_text_requested")
+        self.follow_link_result = kwargs.get("follow_link_result")
         self.final_url = kwargs["final_url"]
 
 
 class FakeProviderWithCourseDump(FakeProvider):
-    def dump_course_html(self, course_id, output_path):
+    def dump_course_html(self, course_id, output_path, follow_link_text=None):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("<html>fake course dump</html>", encoding="utf-8")
         return _FakeCourseDumpResult(
@@ -189,7 +191,9 @@ class FakeProviderWithCourseDump(FakeProvider):
             course_url="https://x/course/outline",
             url_before_content_link="https://x/course/outline",
             content_link_followed="https://x/course/content",
-            final_url="https://x/course/content",
+            follow_link_text_requested=follow_link_text,
+            follow_link_result="https://x/course/content/assessments" if follow_link_text else None,
+            final_url="https://x/course/content/assessments" if follow_link_text else "https://x/course/content",
         )
 
 
@@ -205,6 +209,20 @@ def test_debug_dump_course_html_reports_urls(monkeypatch, settings):
     assert "https://x/course/outline" in result.output
     assert "Followed a link matching" in result.output
     assert "https://x/course/content" in result.output
+
+
+def test_debug_dump_course_html_with_follow_reports_the_extra_link(monkeypatch, settings):
+    fake = FakeProviderWithCourseDump()
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(
+        cli_module.cli, ["debug-dump-course-html", "_12345_1", "--follow", "Assessments"]
+    )
+
+    assert result.exit_code == 0
+    assert "Followed --follow 'Assessments'" in result.output
+    assert "https://x/course/content/assessments" in result.output
 
 
 def test_debug_dump_course_html_unavailable_on_providers_without_it(monkeypatch, settings):
