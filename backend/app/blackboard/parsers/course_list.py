@@ -37,7 +37,13 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from app.blackboard.dto import Course, CourseView
-from app.blackboard.parsers.common import absolute_url, attr_str, course_id_from_href, first_matching
+from app.blackboard.parsers.common import (
+    absolute_url,
+    attr_str,
+    course_id_from_href,
+    first_matching,
+    is_navigable_url,
+)
 
 logger = logging.getLogger("blackboard.parsers.course_list")
 
@@ -84,16 +90,6 @@ INSTRUCTOR_SELECTORS = [
 ]
 
 INSTRUCTOR_LABEL_PATTERN = re.compile(r"instructor", re.IGNORECASE)
-
-# Real UDEM course cards navigate via a JS click handler instead of a real
-# href (confirmed: href="javascript:void(0);" on a.course-title). Treated
-# as "no real URL here" so we reconstruct one instead of saving garbage.
-_NON_NAVIGABLE_HREF_PREFIXES = ("javascript:", "#")
-
-
-def _is_navigable_url(href: str) -> bool:
-    lowered = href.strip().lower()
-    return bool(lowered) and not lowered.startswith(_NON_NAVIGABLE_HREF_PREFIXES)
 
 
 def _course_view_from_text(text: str) -> CourseView:
@@ -165,7 +161,7 @@ class CourseListParser:
         href = attr_str(link, "href")
         if not href:
             return None
-        navigable = _is_navigable_url(href)
+        navigable = is_navigable_url(href)
 
         # Prefer Blackboard's own data-course-id attribute (confirmed real
         # UDEM markup) — it's the actual identifier Blackboard puts on the
@@ -239,7 +235,7 @@ class CourseListParser:
 
     def _parse_bare_link(self, link: Tag, base_url: str) -> Course | None:
         href = attr_str(link, "href")
-        if not href or not _is_navigable_url(href):
+        if not href or not is_navigable_url(href):
             # No card context here to reconstruct a URL from a data-course-id
             # the way _parse_card() can — a non-navigable href in this
             # fallback path just isn't a usable course entry.

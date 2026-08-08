@@ -169,3 +169,35 @@ def test_dump_course_html_follows_a_matching_content_link(tmp_path, monkeypatch)
     assert result.content_link_followed == content_url
     assert result.final_url == content_url
     assert result.url_before_content_link == entry_url  # recorded before following the link
+
+
+def test_dump_course_html_skips_non_navigable_content_link_instead_of_crashing(tmp_path, monkeypatch):
+    """Real UDEM finding: the course menu has an accessibility "skip to
+    content" link whose text matches "content" but whose href is just
+    "#content" — page.goto("#content") raised a Playwright protocol error.
+    A real, followable link further down the list must still be found."""
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
+    provider = make_provider_with_cached_course(tmp_path, course)
+    entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    real_content_url = "https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?course_id=_424872_1"
+    links = [
+        _FakeLink(text="Skip to main content", href="#content"),
+        _FakeLink(text="Course Content", href=real_content_url),
+    ]
+    fake_page = _FakePage(html="<html><body>real content listing</body></html>", url=entry_url, links=links)
+
+    @contextmanager
+    def fake_authenticated_browser():
+        yield (None, fake_page)
+
+    monkeypatch.setattr(provider, "_authenticated_browser", fake_authenticated_browser)
+
+    output_path = tmp_path / "course_424872.html"
+    result = provider.dump_course_html("_424872_1", output_path)  # must not raise
+
+    assert result.content_link_followed == real_content_url
+    assert "#content" not in fake_page.goto_calls

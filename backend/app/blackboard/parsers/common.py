@@ -68,6 +68,19 @@ def absolute_url(base_url: str, href: str | None) -> str | None:
     return urljoin(base_url + "/", href)
 
 
+# Hrefs that aren't real navigation targets: JS click handlers (confirmed
+# real UDEM course cards use href="javascript:void(0);"), same-page anchor
+# links (e.g. accessibility "skip to content" links — confirmed real UDEM
+# course-menu markup includes one with an href matching "content" text but
+# pointing nowhere real), and empty strings.
+_NON_NAVIGABLE_HREF_PREFIXES = ("javascript:", "#")
+
+
+def is_navigable_url(href: str) -> bool:
+    lowered = href.strip().lower()
+    return bool(lowered) and not lowered.startswith(_NON_NAVIGABLE_HREF_PREFIXES)
+
+
 def first_matching(soup: BeautifulSoup, selectors: list[str]) -> list[Tag]:
     """Tries each selector in order; returns the first non-empty result.
 

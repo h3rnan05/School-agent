@@ -33,6 +33,7 @@ from app.blackboard.exceptions import (
     SessionExpiredError,
 )
 from app.blackboard.parsers import AssignmentParser, CourseListParser, with_recomputed_timing_status
+from app.blackboard.parsers.common import is_navigable_url
 from app.blackboard.provider import BlackboardProvider, ProviderHealth, SessionHandle
 
 logger = logging.getLogger("blackboard.provider.playwright")
@@ -359,6 +360,15 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         return course.url
 
     def _find_content_link(self, page) -> str | None:
+        """Finds a link whose text looks like it leads to course content.
+
+        Skips non-navigable hrefs (confirmed real UDEM course-menu markup
+        includes a same-page anchor link — e.g. an accessibility "skip to
+        content" link — whose text matches "content" but whose href is
+        just "#content"; page.goto() on that crashes rather than doing
+        anything useful) instead of returning the first text match
+        regardless of whether it's an actual link to follow.
+        """
         try:
             links = page.locator("a").all()
         except Exception:  # noqa: BLE001
@@ -368,10 +378,11 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                 text = link.text_content(timeout=1000) or ""
             except Exception:  # noqa: BLE001
                 continue
-            if CONTENT_LINK_PATTERN.search(text):
-                href = link.get_attribute("href")
-                if href:
-                    return href
+            if not CONTENT_LINK_PATTERN.search(text):
+                continue
+            href = link.get_attribute("href")
+            if href and is_navigable_url(href):
+                return href
         return None
 
     def _resolve_course(self, course_id: str) -> Course:

@@ -1,6 +1,6 @@
 from app.blackboard.dto import CourseView
 from app.blackboard.parsers import CourseListParser
-from app.blackboard.parsers.course_list import _is_navigable_url
+from app.blackboard.parsers.common import is_navigable_url
 
 BASE_URL = "https://university.blackboard.com"
 
@@ -147,9 +147,10 @@ def test_card_without_data_course_id_is_filtered_out(load_fixture):
 
 
 def test_is_navigable_url():
-    assert _is_navigable_url("https://university.blackboard.com/ultra/courses/_1_1/outline") is True
-    assert _is_navigable_url("/ultra/courses/_1_1/outline") is True
-    assert _is_navigable_url("javascript:void(0);") is False
-    assert _is_navigable_url("JAVASCRIPT:void(0)") is False  # case-insensitive
-    assert _is_navigable_url("#") is False
-    assert _is_navigable_url("") is False
+    assert is_navigable_url("https://university.blackboard.com/ultra/courses/_1_1/outline") is True
+    assert is_navigable_url("/ultra/courses/_1_1/outline") is True
+    assert is_navigable_url("javascript:void(0);") is False
+    assert is_navigable_url("JAVASCRIPT:void(0)") is False  # case-insensitive
+    assert is_navigable_url("#") is False
+    assert is_navigable_url("#content") is False  # real UDEM "skip to content" link, crashed page.goto()
+    assert is_navigable_url("") is False
