@@ -5,13 +5,23 @@ detectar assignments próximos a vencer, sincronizarlos con Google Calendar,
 y preparar material de apoyo (research, outlines, drafts) con revisión humana
 obligatoria antes de cualquier entrega.
 
-## Estado del proyecto: Fase 1.5 — Arquitectura revisada y endurecida
+## Estado del proyecto: Fase 2 — Módulo de Blackboard implementado
 
-Este repositorio está en la etapa de **análisis y diseño**. Todavía no hay
-código de producción. `ARCHITECTURE.md` pasó por una revisión técnica tipo
-Senior Staff Engineer que, entre otras cosas, agrega enforcement técnico
-(código + trigger de base de datos + roles de mínimo privilegio) para que
-la regla de aprobación humana no dependa solo de un prompt de Claude:
+Arquitectura (Fase 1.5) **aprobada**. Primer módulo de código real
+construido y probado: [`backend/`](./backend) contiene `BlackboardProvider`
+con su implementación `PlaywrightBlackboardProvider` — acceso **solo
+lectura** a Blackboard, sin guardar tu contraseña nunca. Ver
+[`backend/README.md`](./backend/README.md) para cómo instalarlo y correr
+`blackboard login / courses / assignments / upcoming`.
+
+Deliberadamente fuera de esta fase (según lo pedido): PostgreSQL, Google
+Calendar, Claude/IA, Telegram, frontend, y cualquier tipo de submission.
+
+`ARCHITECTURE.md` sigue siendo la referencia completa del sistema. Pasó por
+una revisión técnica tipo Senior Staff Engineer que, entre otras cosas,
+agrega enforcement técnico (código + trigger de base de datos + roles de
+mínimo privilegio) para que la regla de aprobación humana no dependa solo
+de un prompt de Claude:
 
 1. Análisis de requerimientos
 2. Arquitectura propuesta
@@ -46,18 +56,13 @@ del flujo siempre requiere aprobación humana explícita.
 
 ## Próximos pasos
 
-Este documento de arquitectura requiere tu aprobación antes de empezar a
-construir. Además, para implementar el módulo de Blackboard necesito que
-confirmes (ver sección 7 de `ARCHITECTURE.md`):
+La Fase 2 (módulo de Blackboard) queda entregada para que la pruebes contra
+tu Blackboard real siguiendo `backend/README.md`. Es muy probable que el
+parser (`backend/app/blackboard/parser.py`) necesite ajustes de selectores
+una vez lo corras de verdad — se escribió sin acceso a HTML real de tu
+Blackboard, de forma honesta y documentada (ver `ARCHITECTURE.md` sección
+16 y el aviso en `backend/README.md`).
 
-- URL base de tu Blackboard institucional (ej. `https://xxx.blackboard.com`).
-- Si tu institución usa **Blackboard Learn Ultra** o el **Original Experience**.
-- Si tu institución tiene un portal de desarrolladores de Blackboard/Anthology
-  con acceso a REST API para tu cuenta (la mayoría de cuentas de estudiante
-  no lo tienen; si no lo tienes, usaremos automatización con Playwright).
-- Cómo inicias sesión hoy: usuario/contraseña directo en Blackboard, o SSO
-  institucional (Okta, Azure AD, Shibboleth, etc.) con MFA.
-
-Una vez apruebes esta revisión (Fase 1.5) y confirmes estos puntos,
-construiremos el sistema módulo por módulo, empezando por
-`BlackboardProvider` (`PlaywrightBlackboardProvider`).
+No se avanza a la siguiente fase (Google Calendar, IA, notificaciones,
+frontend) hasta que confirmes que `login`, `courses`, `assignments` y
+`upcoming` funcionan correctamente contra tu Blackboard.

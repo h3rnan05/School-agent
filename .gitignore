@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Environment / secrets
+.env
+.env.*
+*.key
+
+# Blackboard session data — NEVER commit auth material
+.school-agent/
+**/storage_state*.json
+**/*.session.json
+**/debug_screenshots/
+
+# Node / frontend (future phases)
+node_modules/
+.next/
+
+# OS
+.DS_Store
