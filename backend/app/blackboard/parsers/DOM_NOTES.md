@@ -4,24 +4,43 @@ Per Step 9: for every important piece of data, this documents the selector
 strategy and fallback used, and — critically — **whether it's based on
 real evidence or is still an unverified best guess.**
 
-No real HTML from `cursos-udem.blackboard.com` was available while writing
-this (see the top-level explanation for why this session can't drive an
-interactive login). What *was* available: your text description of the
-`/ultra/course` page (course cards showing Course ID, Course name, Course
-view, Instructor, Open, More info) and the confirmed fact that some course
-cards read "Original Course View". That's real evidence, just not DOM —
-so the entries below are marked accordingly.
+**Update — CONFIRMED against real markup.** You shared the actual DOM
+structure from DevTools against `cursos-udem.blackboard.com` (redacted of
+personal data). The selectors below were rewritten from that evidence; the
+table marks exactly what's confirmed vs still an assumption.
 
 ## Course list (`parsers/course_list.py`)
 
 | DATA | Selector strategy | Fallback | Evidence |
 |---|---|---|---|
-| Card container | `[data-testid*="course-list-item" i]` → `[data-testid*="course-card" i]` → `[role="article"]` → `[role="listitem"]` | If none match, skip cards entirely and scan the whole page for course links directly (Original Experience's flatter markup) | **Unverified.** Ultra pages are React apps and commonly use `data-testid`/ARIA roles for exactly this kind of repeated-item list, but no real attribute name was seen. |
-| Course link (within a card) | `a[href*="/ultra/courses/"]` → `a[href*="course_id="]` | None found → card skipped | **Partially verified.** The `/ultra/courses/` URL segment is standard Ultra Experience routing (confirmed by Blackboard's own product documentation pattern, not by seeing your page). `course_id=` is Original Experience's classic query param. |
-| Course name | Link text, then `aria-label` on the link | Falls back to the course id itself rather than an empty string | Unverified against real markup. |
-| Course view | Literal substring search for `"original course view"` / `"ultra course view"` (case-insensitive) across the card's full text | `CourseView.UNKNOWN` — never guessed | **Best evidence we have**: you explicitly reported this exact label text appears on the card. This is the one piece of the parser built from something closer to ground truth. |
-| Instructor | Line-based label scan: a line matching `/instructor/i`, then either the remainder of that same line or the next line | `None` | Unverified layout (label-on-own-line vs same-line-colon), but the field's *existence* is confirmed by your description. |
-| Term | — | Always `None` | Not attempted — no evidence a term/semester label exists on the card at all; left unset rather than guessed. |
+| Card container | `article[data-course-id]` → `article.course-element-card` → `[data-testid*="course-list-item" i]` → `[data-testid*="course-card" i]` → `[role="article"]` → `[role="listitem"]` | If none match, skip cards entirely and scan the whole page for course links directly (Original Experience's flatter markup) | **CONFIRMED** — you shared this exact structure: `<article data-course-id="..." class="element-card course-element-card ...">`. |
+| Course id | `article`'s `data-course-id` attribute | `course_id_from_href()` on the link's URL, then the absolute URL itself | **CONFIRMED** — Blackboard puts its own internal id directly on the card, no URL parsing needed. |
+| Course link | `a.course-title[href]` within the card | `a[href*="/ultra/courses/"]` → `a[href*="course_id="]` | **CONFIRMED** the class name and that it's an `<a>` with `href`. The exact href *value* pattern (`/ultra/courses/_XXXXX_1/outline` vs something else) is still unconfirmed — you weren't sure when asked, see below. |
+| Course name | `h4.js-course-title-element` text, inside the course-title link | Link's own text, then its `aria-label`, then the course id | **CONFIRMED** — `<h4 class="js-course-title-element ellipsis">` sits inside `a.course-title`. |
+| Course view | `.course-title .course-type` text, checked against `"original/ultra course view"` | `.course-type` anywhere in the card, then a whole-card text scan, then `UNKNOWN` | **Structure confirmed** (`<span class="course-type">` exists right next to the title), **exact text NOT confirmed** — you weren't able to check what it actually says. Currently assumed to read "Original Course View" / "Ultra Course View" like the rest of Blackboard's UI; if it says something else, this needs a one-line fix. |
+| Instructor | `[class*="course_username"]` text | Line-based label scan for `/instructor/i` | **CONFIRMED** — `<span class="course_username course_user_...">` (the suffix is per-user/opaque, hence the wildcard match). |
+| Term | — | Always `None` | Not attempted — no evidence a term/semester label exists on the card; left unset rather than guessed. |
+
+### Still unconfirmed — quick way to check without DevTools
+
+The dumped page is the live DOM serialized by the browser, not
+nicely-formatted source, so plain `grep` on it is unreliable — use the
+`bs4` parser that's already installed instead. From `backend/`, with the
+venv active:
+
+```bash
+python3 -c "
+from bs4 import BeautifulSoup
+html = open('$HOME/.school-agent/debug_html/courses_page.html', encoding='utf-8').read()
+soup = BeautifulSoup(html, 'html.parser')
+print('course-type text:', [el.get_text(strip=True) for el in soup.select('.course-type')][:5])
+print('course-title hrefs:', [a.get('href') for a in soup.select('a.course-title')][:5])
+"
+```
+
+Paste the output (URLs/IDs are fine to share — no login/session data lives
+in this file) to turn the last two "unconfirmed" rows above into confirmed
+ones.
 
 ## Assignments — Original Course View (`parsers/original_course.py`)
 

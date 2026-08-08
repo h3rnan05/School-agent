@@ -10,15 +10,16 @@ rest of the system (parsers/dispatch.py) picks OriginalCourseParser vs
 UltraCourseParser based on that per-course value, never on the
 institution's experience as a whole.
 
-HONESTY NOTE: this was written from a text description of the UDEM course
-cards (fields: Course ID, Course name, Course view, Instructor, Open, More
-info), not from captured real HTML — no real DOM sample was available.
-The card/container selectors below are best-effort candidates for a
-React-rendered Ultra page (data-testid / ARIA patterns are typical there);
-the label-based field extraction (course_view, instructor) is a closer bet
-because it's driven by literal label text the user described on-screen,
-which tends to survive UI/selector changes better than CSS classes. Both
-still need verification against real HTML — see backend/README.md.
+Phase 2.1 update — CONFIRMED against real UDEM markup (shared by the user
+from DevTools, redacted of personal data): course cards are
+`<article data-course-id="..." class="element-card course-element-card
+...">` containing `a.course-title` (the course link, with an
+`h4.js-course-title-element` for the name and a `.course-type` span next
+to it — believed to be the Course view indicator, exact text not yet
+confirmed) and a `[class*="course_username"]` span for the instructor.
+Those are now the PRIMARY selectors; the earlier data-testid/ARIA guesses
+stay as fallbacks for institutions/skins that don't match this structure.
+See parsers/DOM_NOTES.md for exactly what's confirmed vs still assumed.
 """
 from __future__ import annotations
 
@@ -35,6 +36,8 @@ logger = logging.getLogger("blackboard.parsers.course_list")
 
 # Candidate containers for one course "card"/list entry. Tried in order.
 CARD_SELECTORS = [
+    "article[data-course-id]",  # confirmed real UDEM markup (Phase 2.1)
+    "article.course-element-card",
     '[data-testid*="course-list-item" i]',
     '[data-testid*="course-card" i]',
     '[role="article"]',
@@ -45,18 +48,38 @@ CARD_SELECTORS = [
 # first; falls back to scanning the whole page for these if no card
 # container matched at all (e.g. Original Experience's flatter markup).
 COURSE_LINK_SELECTORS = [
-    'a[href*="/ultra/courses/"]',   # Ultra Experience course list entries
-    'a[href*="course_id="]',        # Original Experience "My Courses" module
+    "a.course-title[href]",  # confirmed real UDEM markup (Phase 2.1)
+    'a[href*="/ultra/courses/"]',  # generic Ultra Experience pattern
+    'a[href*="course_id="]',  # generic Original Experience pattern
+]
+
+# Where the course name text lives, inside the course-title link.
+COURSE_TITLE_TEXT_SELECTORS = [
+    "h4.js-course-title-element",  # confirmed real UDEM markup (Phase 2.1)
+]
+
+# Believed (not yet confirmed) to hold the Original/Ultra Course View
+# label. Checked first; _course_view_from_text() falls back to scanning
+# the whole card's text if this doesn't contain a recognizable value.
+COURSE_TYPE_SELECTORS = [
+    ".course-title .course-type",  # confirmed present in real UDEM markup; exact text TBD
+    ".course-type",
+]
+
+# Confirmed real UDEM markup (Phase 2.1): a span whose class starts with
+# "course_username" (with an opaque per-user suffix, hence the wildcard).
+INSTRUCTOR_SELECTORS = [
+    '[class*="course_username"]',
 ]
 
 INSTRUCTOR_LABEL_PATTERN = re.compile(r"instructor", re.IGNORECASE)
 
 
-def _detect_course_view(card_text: str) -> CourseView:
+def _course_view_from_text(text: str) -> CourseView:
     """Never guesses: only returns ORIGINAL/ULTRA when the literal label
     Blackboard displays is found; UNKNOWN otherwise (Step 3 requirement).
     """
-    lowered = card_text.lower()
+    lowered = text.lower()
     if "original course view" in lowered:
         return CourseView.ORIGINAL
     if "ultra course view" in lowered:
@@ -121,13 +144,16 @@ class CourseListParser:
         href = attr_str(link, "href")
         if not href:
             return None
-
         absolute = absolute_url(base_url, href)
-        course_id = course_id_from_href(href) or absolute
+
+        # Prefer Blackboard's own data-course-id attribute (confirmed real
+        # UDEM markup) — it's the actual identifier Blackboard puts on the
+        # card itself, more reliable than parsing one out of a URL.
+        course_id = attr_str(card, "data-course-id") or course_id_from_href(href) or absolute
         if not course_id:
             return None
 
-        name = link.get_text(strip=True) or attr_str(link, "aria-label") or course_id
+        name = self._extract_name(link) or attr_str(link, "aria-label") or course_id
         card_lines = [line for line in card.get_text(separator="\n", strip=True).split("\n") if line]
         card_text = " ".join(card_lines)
 
@@ -136,10 +162,41 @@ class CourseListParser:
             name=name,
             url=absolute or href,
             term=None,  # not reliably present on every skin; left unset rather than guessed
-            course_view=_detect_course_view(card_text),
-            instructor=_extract_labeled_value(card_lines, INSTRUCTOR_LABEL_PATTERN),
+            course_view=self._detect_course_view(card, card_text),
+            instructor=self._extract_instructor(card, card_lines),
             source="playwright",
         )
+
+    def _extract_name(self, link: Tag) -> str | None:
+        for selector in COURSE_TITLE_TEXT_SELECTORS:
+            title_el = link.select_one(selector)
+            if title_el is not None:
+                text = title_el.get_text(strip=True)
+                if text:
+                    return text
+        return link.get_text(strip=True) or None
+
+    def _detect_course_view(self, card: Tag, card_text: str) -> CourseView:
+        for selector in COURSE_TYPE_SELECTORS:
+            el = card.select_one(selector)
+            if el is not None:
+                detected = _course_view_from_text(el.get_text(strip=True))
+                if detected != CourseView.UNKNOWN:
+                    return detected
+        # Fallback: the label might render somewhere other than .course-type
+        # (e.g. behind the "more info" toggle, or a different element than
+        # believed) — scan the whole card's visible text as a last resort
+        # before giving up and reporting UNKNOWN.
+        return _course_view_from_text(card_text)
+
+    def _extract_instructor(self, card: Tag, card_lines: list[str]) -> str | None:
+        for selector in INSTRUCTOR_SELECTORS:
+            el = card.select_one(selector)
+            if el is not None:
+                text = el.get_text(strip=True)
+                if text:
+                    return text
+        return _extract_labeled_value(card_lines, INSTRUCTOR_LABEL_PATTERN)
 
     def _parse_bare_link(self, link: Tag, base_url: str) -> Course | None:
         href = attr_str(link, "href")

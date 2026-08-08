@@ -79,3 +79,32 @@ def test_missing_course_links_returns_empty_list_not_error(load_fixture):
     html = load_fixture("courses_empty.html")
     courses = CourseListParser().parse(html, BASE_URL)
     assert courses == []
+
+
+def test_parses_real_udem_card_structure(load_fixture):
+    """Modeled on the actual markup the user shared from DevTools
+    (Phase 2.1): article[data-course-id] cards, a.course-title link with
+    an h4.js-course-title-element name and a .course-type span, and a
+    [class*="course_username"] instructor span."""
+    html = load_fixture("course_list_udem_real_structure.html")
+    courses = CourseListParser().parse(html, BASE_URL)
+
+    assert len(courses) == 2
+
+    finance = _by_id(courses, "_555111_1")
+    assert finance.name == "FINC 301 - Corporate Finance"
+    assert finance.instructor == "Dr. Maria Gonzalez"
+    assert finance.url == f"{BASE_URL}/ultra/courses/_555111_1/outline"
+    # course_view text is a best-effort guess pending confirmation — see
+    # DOM_NOTES.md — so this only checks it's read from the real card
+    # rather than falling back to UNKNOWN, not the specific value.
+    assert finance.course_view in (CourseView.ORIGINAL, CourseView.ULTRA)
+
+
+def test_data_course_id_attribute_is_preferred_over_url_derived_id(load_fixture):
+    """Blackboard's own data-course-id is more trustworthy than anything
+    parsed out of a URL — confirmed present on real UDEM cards."""
+    html = load_fixture("course_list_udem_real_structure.html")
+    courses = CourseListParser().parse(html, BASE_URL)
+    ids = {c.id for c in courses}
+    assert ids == {"_555111_1", "_555112_1"}
