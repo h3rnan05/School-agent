@@ -74,6 +74,16 @@ INSTRUCTOR_SELECTORS = [
 
 INSTRUCTOR_LABEL_PATTERN = re.compile(r"instructor", re.IGNORECASE)
 
+# Real UDEM course cards navigate via a JS click handler instead of a real
+# href (confirmed: href="javascript:void(0);" on a.course-title). Treated
+# as "no real URL here" so we reconstruct one instead of saving garbage.
+_NON_NAVIGABLE_HREF_PREFIXES = ("javascript:", "#")
+
+
+def _is_navigable_url(href: str) -> bool:
+    lowered = href.strip().lower()
+    return bool(lowered) and not lowered.startswith(_NON_NAVIGABLE_HREF_PREFIXES)
+
 
 def _course_view_from_text(text: str) -> CourseView:
     """Never guesses: only returns ORIGINAL/ULTRA when the literal label
@@ -144,14 +154,32 @@ class CourseListParser:
         href = attr_str(link, "href")
         if not href:
             return None
-        absolute = absolute_url(base_url, href)
+        navigable = _is_navigable_url(href)
 
         # Prefer Blackboard's own data-course-id attribute (confirmed real
         # UDEM markup) — it's the actual identifier Blackboard puts on the
-        # card itself, more reliable than parsing one out of a URL.
-        course_id = attr_str(card, "data-course-id") or course_id_from_href(href) or absolute
+        # card itself, more reliable than parsing one out of a URL. Only
+        # fall back to a URL-derived id when the href is a real URL —
+        # confirmed real UDEM cards use href="javascript:void(0);" (a JS
+        # click handler, not a link), so course_id_from_href()/the href
+        # itself would just produce garbage there.
+        course_id = attr_str(card, "data-course-id") or (
+            course_id_from_href(href) if navigable else None
+        )
         if not course_id:
+            # No reliable identifier at all — this card isn't a real course
+            # (Ultra shows some non-course tiles sharing the same markup,
+            # e.g. a "browse catalog" entry) rather than something to guess
+            # an identity for.
             return None
+
+        if navigable:
+            url = absolute_url(base_url, href) or href
+        else:
+            # Reconstruct the URL from the confirmed data-course-id using
+            # Ultra's standard course routing, since the href itself isn't
+            # a real link to follow.
+            url = f"{base_url}/ultra/courses/{course_id}/outline"
 
         name = self._extract_name(link) or attr_str(link, "aria-label") or course_id
         card_lines = [line for line in card.get_text(separator="\n", strip=True).split("\n") if line]
@@ -160,7 +188,7 @@ class CourseListParser:
         return Course(
             id=course_id,
             name=name,
-            url=absolute or href,
+            url=url,
             term=None,  # not reliably present on every skin; left unset rather than guessed
             course_view=self._detect_course_view(card, card_text),
             instructor=self._extract_instructor(card, card_lines),
@@ -200,7 +228,10 @@ class CourseListParser:
 
     def _parse_bare_link(self, link: Tag, base_url: str) -> Course | None:
         href = attr_str(link, "href")
-        if not href:
+        if not href or not _is_navigable_url(href):
+            # No card context here to reconstruct a URL from a data-course-id
+            # the way _parse_card() can — a non-navigable href in this
+            # fallback path just isn't a usable course entry.
             return None
         absolute = absolute_url(base_url, href)
         course_id = course_id_from_href(href) or absolute

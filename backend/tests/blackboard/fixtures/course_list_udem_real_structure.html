@@ -1,9 +1,14 @@
 <!--
   Modeled on the REAL markup structure shared by the user from DevTools
   against cursos-udem.blackboard.com (Phase 2.1), with course/instructor
-  names replaced by synthetic values. The exact text inside .course-type
-  is NOT yet confirmed — "Original/Ultra Course View" here is a
-  best-effort guess pending confirmation, per DOM_NOTES.md.
+  names replaced by synthetic values. Confirmed against a real run:
+  .course-type does read "Original Course View" (card 1's exact text),
+  and a.course-title's real href is "javascript:void(0);" (a JS click
+  handler, not a real link) — card 2 keeps a plain href to cover both
+  code paths in one fixture. Card 3 has no data-course-id at all, modeling
+  the extra non-course tile that showed up in the real run (some
+  non-course card sharing this markup) — it must be filtered out, not
+  turned into a garbage entry.
 -->
 <html>
 <body>
@@ -16,7 +21,7 @@
       <div class="element-details summary">
         <div class="small-12">
           <div class="course-id"><span>21613.202711</span></div>
-          <a class="course-title ellipsis js-course-title-anchor" href="/ultra/courses/_555111_1/outline">
+          <a class="course-title ellipsis js-course-title-anchor" href="javascript:void(0);">
             <h4 class="js-course-title-element ellipsis">FINC 301 - Corporate Finance</h4>
             <span class="course-type">Original Course View</span>
           </a>
@@ -53,6 +58,16 @@
         </div>
         <div class="controls small-4 large-2 medium-2">
           <button class="info-icon"></button>
+        </div>
+      </div>
+    </article>
+
+    <article class="element-card course-element-card course-color-classic">
+      <div class="element-details summary">
+        <div class="small-12">
+          <a class="course-title ellipsis js-course-title-anchor" href="javascript:void(0);">
+            <h4 class="js-course-title-element ellipsis">Browse Catalog</h4>
+          </a>
         </div>
       </div>
     </article>

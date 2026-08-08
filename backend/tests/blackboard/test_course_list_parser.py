@@ -1,5 +1,6 @@
 from app.blackboard.dto import CourseView
 from app.blackboard.parsers import CourseListParser
+from app.blackboard.parsers.course_list import _is_navigable_url
 
 BASE_URL = "https://university.blackboard.com"
 
@@ -85,20 +86,17 @@ def test_parses_real_udem_card_structure(load_fixture):
     """Modeled on the actual markup the user shared from DevTools
     (Phase 2.1): article[data-course-id] cards, a.course-title link with
     an h4.js-course-title-element name and a .course-type span, and a
-    [class*="course_username"] instructor span."""
+    [class*="course_username"] instructor span. course_view text
+    ("Original Course View") was confirmed correct against a real run."""
     html = load_fixture("course_list_udem_real_structure.html")
     courses = CourseListParser().parse(html, BASE_URL)
 
-    assert len(courses) == 2
+    assert len(courses) == 2  # the 3rd card (no data-course-id) is filtered out
 
     finance = _by_id(courses, "_555111_1")
     assert finance.name == "FINC 301 - Corporate Finance"
     assert finance.instructor == "Dr. Maria Gonzalez"
-    assert finance.url == f"{BASE_URL}/ultra/courses/_555111_1/outline"
-    # course_view text is a best-effort guess pending confirmation — see
-    # DOM_NOTES.md — so this only checks it's read from the real card
-    # rather than falling back to UNKNOWN, not the specific value.
-    assert finance.course_view in (CourseView.ORIGINAL, CourseView.ULTRA)
+    assert finance.course_view == CourseView.ORIGINAL
 
 
 def test_data_course_id_attribute_is_preferred_over_url_derived_id(load_fixture):
@@ -108,3 +106,49 @@ def test_data_course_id_attribute_is_preferred_over_url_derived_id(load_fixture)
     courses = CourseListParser().parse(html, BASE_URL)
     ids = {c.id for c in courses}
     assert ids == {"_555111_1", "_555112_1"}
+
+
+def test_javascript_void_href_gets_a_reconstructed_url(load_fixture):
+    """Confirmed real UDEM behavior: a.course-title's href is
+    "javascript:void(0);" (a JS click handler), not a usable URL. The
+    course_id is still known from data-course-id, so a working Ultra
+    course URL is reconstructed instead of saving the useless href."""
+    html = load_fixture("course_list_udem_real_structure.html")
+    courses = CourseListParser().parse(html, BASE_URL)
+
+    finance = _by_id(courses, "_555111_1")
+    assert finance.url == f"{BASE_URL}/ultra/courses/_555111_1/outline"
+    assert "javascript:" not in finance.url
+
+
+def test_navigable_href_is_still_used_as_is(load_fixture):
+    """When a card DOES have a real href, it's used directly rather than
+    always reconstructing one — the reconstruction is a fallback, not the
+    default."""
+    html = load_fixture("course_list_udem_real_structure.html")
+    courses = CourseListParser().parse(html, BASE_URL)
+
+    ml_course = _by_id(courses, "_555112_1")
+    assert ml_course.url == f"{BASE_URL}/ultra/courses/_555112_1/outline"
+
+
+def test_card_without_data_course_id_is_filtered_out(load_fixture):
+    """A card sharing the same markup but with no data-course-id and a
+    javascript: href (the extra "Browse Catalog"-style tile seen in a real
+    run) isn't a real course — must be dropped, not turned into a garbage
+    entry keyed by "javascript:void(0);"."""
+    html = load_fixture("course_list_udem_real_structure.html")
+    courses = CourseListParser().parse(html, BASE_URL)
+
+    names = {c.name for c in courses}
+    assert "Browse Catalog" not in names
+    assert all("javascript:" not in c.id for c in courses)
+
+
+def test_is_navigable_url():
+    assert _is_navigable_url("https://university.blackboard.com/ultra/courses/_1_1/outline") is True
+    assert _is_navigable_url("/ultra/courses/_1_1/outline") is True
+    assert _is_navigable_url("javascript:void(0);") is False
+    assert _is_navigable_url("JAVASCRIPT:void(0)") is False  # case-insensitive
+    assert _is_navigable_url("#") is False
+    assert _is_navigable_url("") is False
