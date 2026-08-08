@@ -169,3 +169,50 @@ def test_debug_dump_courses_html_unavailable_on_providers_without_it(monkeypatch
 
     assert result.exit_code == 1
     assert "only available with the Playwright provider" in result.output
+
+
+class _FakeCourseDumpResult:
+    def __init__(self, **kwargs):
+        self.html_path = kwargs["html_path"]
+        self.course_url = kwargs["course_url"]
+        self.url_before_content_link = kwargs["url_before_content_link"]
+        self.content_link_followed = kwargs["content_link_followed"]
+        self.final_url = kwargs["final_url"]
+
+
+class FakeProviderWithCourseDump(FakeProvider):
+    def dump_course_html(self, course_id, output_path):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("<html>fake course dump</html>", encoding="utf-8")
+        return _FakeCourseDumpResult(
+            html_path=output_path,
+            course_url="https://x/course/outline",
+            url_before_content_link="https://x/course/outline",
+            content_link_followed="https://x/course/content",
+            final_url="https://x/course/content",
+        )
+
+
+def test_debug_dump_course_html_reports_urls(monkeypatch, settings):
+    fake = FakeProviderWithCourseDump()
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-course-html", "_12345_1"])
+
+    assert result.exit_code == 0
+    assert "Saved the course page's HTML to:" in result.output
+    assert "https://x/course/outline" in result.output
+    assert "Followed a link matching" in result.output
+    assert "https://x/course/content" in result.output
+
+
+def test_debug_dump_course_html_unavailable_on_providers_without_it(monkeypatch, settings):
+    fake = FakeProvider()  # no dump_course_html method
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-course-html", "_12345_1"])
+
+    assert result.exit_code == 1
+    assert "only available with the Playwright provider" in result.output

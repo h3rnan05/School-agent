@@ -11,7 +11,11 @@ line-length = 110
 target-version = "py39"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# FA: catches `X | Y` / `list[X]`-as-annotation usage on a file missing
+# `from __future__ import annotations` — exactly the class of Python 3.9
+# incompatibility that slipped through twice already (test_bucketing.py,
+# then test_dump_course_html.py) before real-machine testing caught it.
+select = ["E", "F", "I", "UP", "B", "FA"]
 # E501: line length, not worth fighting for docstrings/URLs.
 # UP042: str+Enum (not StrEnum) is intentional here for broad JSON/logging
 # compatibility, not an oversight.

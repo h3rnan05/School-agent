@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -35,6 +36,19 @@ from app.blackboard.parsers import AssignmentParser, CourseListParser, with_reco
 from app.blackboard.provider import BlackboardProvider, ProviderHealth, SessionHandle
 
 logger = logging.getLogger("blackboard.provider.playwright")
+
+
+@dataclass(frozen=True)
+class CourseDumpResult:
+    """Return value of PlaywrightBlackboardProvider.dump_course_html —
+    diagnostic info, not part of any BlackboardProvider-facing DTO.
+    """
+
+    html_path: Path
+    course_url: str
+    url_before_content_link: str
+    content_link_followed: str | None
+    final_url: str
 
 # Candidate selectors for detecting the logged-in user's DISPLAY NAME only.
 # This is best-effort and cosmetic (used for the "Logged in as: ..." message
@@ -65,7 +79,7 @@ LOGIN_PAGE_URL_HINTS = (
 # Candidate link text patterns for finding a course's assignment/content area.
 CONTENT_LINK_PATTERN = re.compile(r"assignments?|content|coursework", re.IGNORECASE)
 
-__all__ = ["PlaywrightBlackboardProvider", "diff_assignments"]
+__all__ = ["CourseDumpResult", "PlaywrightBlackboardProvider", "diff_assignments"]
 
 
 class PlaywrightBlackboardProvider(BlackboardProvider):
@@ -226,6 +240,42 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(html, encoding="utf-8")
         return output_path
+
+    def dump_course_html(self, course_id: str, output_path: Path) -> CourseDumpResult:
+        """Saves the raw HTML of a single course's content page to disk,
+        the same way dump_courses_html() does for the course list.
+
+        Added after get_assignments() came back empty against a real
+        Original Course View course accessed through Ultra's course outline
+        route — need to see what's actually on that page (and whether
+        Blackboard redirected somewhere else) to fix OriginalCourseParser's
+        selectors, or _find_content_link's link-following, with evidence.
+        """
+        course = self._resolve_course(course_id)
+
+        with self._authenticated_browser() as (browser, page):
+            page.goto(course.url)
+            self._assert_logged_in(page)
+            self._wait_for_render(page)
+            url_before_content_link = page.url
+
+            content_href = self._find_content_link(page)
+            if content_href:
+                page.goto(content_href)
+                self._wait_for_render(page)
+
+            html = page.content()
+            final_url = page.url
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html, encoding="utf-8")
+        return CourseDumpResult(
+            html_path=output_path,
+            course_url=course.url,
+            url_before_content_link=url_before_content_link,
+            content_link_followed=content_href,
+            final_url=final_url,
+        )
 
     # -- internals -----------------------------------------------------
     def _authenticated_browser(self):

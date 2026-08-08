@@ -130,6 +130,46 @@ def debug_dump_courses_html() -> None:
     click.echo("this file) so real selectors can replace the guessed ones.")
 
 
+@cli.command(name="debug-dump-course-html")
+@click.argument("course_id")
+def debug_dump_course_html(course_id: str) -> None:
+    """Save the raw HTML of a single course's content page to a local file.
+
+    Uses your already-saved session. Read-only. Prints which URL it
+    actually landed on (Blackboard sometimes redirects), which matters
+    because `assignments` returning nothing usually means the parser is
+    looking at the wrong page, not that there's nothing there.
+    """
+    settings = load_settings()
+    provider = get_provider(settings)
+    dump = getattr(provider, "dump_course_html", None)
+    if dump is None:
+        click.echo(
+            "This command is only available with the Playwright provider "
+            "(current BLACKBOARD_PROVIDER_IMPL doesn't support it).",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        result = dump(course_id, settings.debug_html_dir / f"course_{course_id}.html")
+    except BlackboardError as exc:
+        click.echo(f"Could not dump the course page: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Saved the course page's HTML to:\n{result.html_path}\n")
+    click.echo(f"course.url (from the course list):  {result.course_url}")
+    click.echo(f"page URL right after navigating there: {result.url_before_content_link}")
+    if result.content_link_followed:
+        click.echo(f"Followed a link matching 'assignments/content/coursework': {result.content_link_followed}")
+    else:
+        click.echo("No link matching 'assignments/content/coursework' was found on that page.")
+    click.echo(f"final page URL (what the saved HTML is from): {result.final_url}\n")
+    click.echo("If the final URL doesn't look like a content/assignments listing, that's the")
+    click.echo("real problem — share these URLs (with the numeric course id is fine) and a")
+    click.echo("chunk of the saved HTML around one visible assignment/item.")
+
+
 @cli.command()
 @click.argument("course_id")
 def assignments(course_id: str) -> None:
