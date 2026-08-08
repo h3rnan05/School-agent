@@ -19,12 +19,7 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from app.blackboard.auth import (
-    SessionStore,
-    build_session_handle,
-    require_username_or_fail,
-    wait_for_manual_login,
-)
+from app.blackboard.auth import SessionStore, build_session_handle, wait_for_manual_login
 from app.blackboard.browser import ManagedBrowser, with_retries
 from app.blackboard.changes import diff_assignments  # re-exported for CLI convenience
 from app.blackboard.config import BlackboardSettings
@@ -32,6 +27,7 @@ from app.blackboard.dto import Assignment, Course, UpcomingAssignments
 from app.blackboard.exceptions import (
     BlackboardUnavailableError,
     CourseUnavailableError,
+    LoginFailedError,
     NoSessionError,
     SessionExpiredError,
 )
@@ -40,15 +36,31 @@ from app.blackboard.provider import BlackboardProvider, ProviderHealth, SessionH
 
 logger = logging.getLogger("blackboard.provider.playwright")
 
-# Candidate selectors for detecting the logged-in username. Tried in order;
-# see parsers/course_list.py's module docstring for why this is a fallback list rather
-# than a single fixed selector.
+# Candidate selectors for detecting the logged-in user's DISPLAY NAME only.
+# This is best-effort and cosmetic (used for the "Logged in as: ..." message
+# and nothing else) — see the module docstring on _looks_like_login_page for
+# why actual authentication checks don't depend on this list matching.
 USERNAME_SELECTORS = [
     '[data-testid="global-nav-user-menu"]',
     "#userDropdown",
     'a[href*="/webapps/portal/execute/tabs/tabAction"] span',
     '[role="banner"] [aria-label*="account" i]',
 ]
+
+# URL fragments that show up across common SSO/IdP flows (Okta, Azure AD,
+# Shibboleth/ADFS, Blackboard's own login page) — used as a fallback signal
+# in _looks_like_login_page when there's no password field on the page
+# (e.g. an intermediate SSO redirect step).
+LOGIN_PAGE_URL_HINTS = (
+    "/login",
+    "/auth/",
+    "/idp/",
+    "/adfs/",
+    "/sso",
+    "okta.com",
+    "login.microsoftonline.com",
+    "shibboleth",
+)
 
 # Candidate link text patterns for finding a course's assignment/content area.
 CONTENT_LINK_PATTERN = re.compile(r"assignments?|content|coursework", re.IGNORECASE)
@@ -75,24 +87,54 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
 
             wait_for_manual_login(page, self._settings.base_url, self._settings.login_timeout_seconds)
 
+            # The user's manual ENTER confirmation above is the actual trust
+            # boundary — this check is a robust *negative* signal (password
+            # field / login-like URL still present) used only to catch a
+            # clearly-failed attempt, never a *positive* one we'd need
+            # institution-specific selectors to get right.
+            if self._looks_like_login_page(page):
+                raise LoginFailedError(
+                    "This still looks like a login page (found a password field, or "
+                    "the URL still looks like a login/SSO page) even after you "
+                    "confirmed. Make sure the browser actually reached your Blackboard "
+                    "homepage before pressing ENTER, then run `login` again."
+                )
+
+            # Best-effort only, purely cosmetic (see USERNAME_SELECTORS) — a
+            # miss here must never stop the session from being saved.
             username = self._detect_username(page)
-            username = require_username_or_fail(username)
 
             with tempfile.TemporaryDirectory() as tmp:
                 plaintext_path = Path(tmp) / "storage_state.json"
                 browser.save_storage_state(plaintext_path)
                 self._session_store.save_plaintext_state(plaintext_path)
 
-            logger.info("Login successful for %s; session saved (encrypted)", username)
+            if username:
+                logger.info("Login confirmed for %s; session saved (encrypted)", username)
+            else:
+                logger.info(
+                    "Login confirmed; session saved (encrypted). Could not detect a "
+                    "display name on the page — that's cosmetic only and doesn't "
+                    "affect anything else."
+                )
             return build_session_handle(username)
 
     def is_session_valid(self) -> bool:
+        if not self._session_store.exists():
+            return False
         try:
-            return self.get_current_user() is not None
-        except NoSessionError:
+            with self._authenticated_browser() as (browser, page):
+                page.goto(self._settings.base_url)
+                return not self._looks_like_login_page(page)
+        except (BlackboardUnavailableError, NoSessionError):
             return False
 
     def get_current_user(self) -> str | None:
+        """Best-effort display name for the currently logged-in user — NOT
+        the same check as is_session_valid()/_assert_logged_in(), which use
+        the more robust _looks_like_login_page() heuristic instead. A miss
+        here just means the greeting is generic, not that the session is bad.
+        """
         if not self._session_store.exists():
             raise NoSessionError("No persisted Blackboard session found. Run `blackboard login` first.")
 
@@ -101,10 +143,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                 page.goto(self._settings.base_url)
             except Exception as exc:  # noqa: BLE001
                 raise BlackboardUnavailableError(f"Could not reach {self._settings.base_url}") from exc
-            username = self._detect_username(page)
-            if username is None:
-                logger.info("Session appears expired: no logged-in user detected")
-            return username
+            return self._detect_username(page)
 
     # -- read-only data ------------------------------------------------
     def get_courses(self) -> list[Course]:
@@ -196,10 +235,25 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         return None
 
     def _assert_logged_in(self, page) -> None:
-        if self._detect_username(page) is None:
+        if self._looks_like_login_page(page):
             raise SessionExpiredError(
-                "Blackboard did not recognize the session as logged in. Run `blackboard login` again."
+                "Blackboard appears to have redirected to a login page. Run `blackboard login` again."
             )
+
+    def _looks_like_login_page(self, page) -> bool:
+        """Robust, skin-agnostic "are we logged out" check: a visible
+        password field is a near-universal signal of a login form, whether
+        it's Blackboard's own login, Okta, Azure AD, or Shibboleth — unlike
+        _detect_username, this doesn't depend on guessing an institution's
+        specific "logged in" markup.
+        """
+        try:
+            if page.locator('input[type="password"]').count() > 0:
+                return True
+        except Exception:  # noqa: BLE001 - page may be mid-navigation
+            pass
+        url = (page.url or "").lower()
+        return any(hint in url for hint in LOGIN_PAGE_URL_HINTS)
 
     def _find_content_link(self, page) -> str | None:
         try:

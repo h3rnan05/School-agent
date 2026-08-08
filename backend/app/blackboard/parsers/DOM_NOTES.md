@@ -35,6 +35,29 @@ Not attempted. `UltraCourseParser` is a stub that returns `[]` with a
 warning — see its module docstring. Zero evidence was available about
 Ultra Course View's content-page DOM.
 
+## Login / session detection (`providers/playwright_provider.py`)
+
+Learned the hard way against real UDEM Blackboard: the first version tried
+to detect "logged in" *positively*, by looking for a guessed username
+element (`USERNAME_SELECTORS`). Against your real page none of those
+selectors matched, and the code treated that as a failed login — even
+though you had genuinely logged in and confirmed it. That was a design
+bug, not just a wrong selector.
+
+Fixed by flipping the check to a *negative*, skin-agnostic signal instead:
+`_looks_like_login_page()` looks for a visible `input[type="password"]`,
+or a URL matching common login/SSO patterns (Okta, Azure AD, Shibboleth,
+`/login`, `/sso`). A password field is a near-universal marker of "you're
+looking at a login form," true across institutions and SSO providers,
+unlike any specific "you're logged in" markup. `USERNAME_SELECTORS` is
+still there but now purely cosmetic (the "Logged in as: ..." message) —
+it never blocks saving a session or gates `courses`/`assignments` anymore.
+
+| DATA | Selector strategy | Fallback | Evidence |
+|---|---|---|---|
+| "Are we logged out" | `input[type="password"]` present, or URL matches `LOGIN_PAGE_URL_HINTS` | Assume logged in if neither matches | Verified in principle (password fields are how login forms work), not against your specific page |
+| Display name (cosmetic) | `USERNAME_SELECTORS` fallback chain | `None` — never blocks anything | Unverified, same caveat as the course card selectors above |
+
 ## How to turn "unverified" into "verified"
 
 Run `blackboard courses` locally (see `backend/README.md`) and tell me,

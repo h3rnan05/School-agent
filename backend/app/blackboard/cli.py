@@ -52,7 +52,10 @@ def login() -> None:
         click.echo(f"Login failed: {exc}", err=True)
         sys.exit(1)
 
-    click.echo(f"Logged in as: {session.username}")
+    if session.username:
+        click.echo(f"Logged in as: {session.username}")
+    else:
+        click.echo("Logged in. (Couldn't detect your display name — cosmetic only, doesn't affect anything.)")
     click.echo("Session saved (encrypted) for future commands.")
 
 

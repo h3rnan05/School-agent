@@ -24,7 +24,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.blackboard.config import BlackboardSettings
-from app.blackboard.exceptions import LoginFailedError, MFATimeoutError, NoSessionError
+from app.blackboard.exceptions import MFATimeoutError, NoSessionError
 from app.blackboard.provider import SessionHandle
 
 logger = logging.getLogger("blackboard.auth")
@@ -113,17 +113,14 @@ def wait_for_manual_login(page, base_url: str, timeout_seconds: int) -> None:
 
 
 def build_session_handle(username: str | None) -> SessionHandle:
+    """`username` is best-effort cosmetic info (see PlaywrightBlackboardProvider
+    ._detect_username) and is NOT what determines `authenticated` — this is
+    only ever called after the user has explicitly confirmed login via
+    wait_for_manual_login(), which is the actual trust boundary. A guessed
+    selector failing to find a display name must never undo that.
+    """
     return SessionHandle(
-        authenticated=username is not None,
+        authenticated=True,
         username=username,
         created_at=datetime.now(timezone.utc),
     )
-
-
-def require_username_or_fail(username: str | None) -> str:
-    if not username:
-        raise LoginFailedError(
-            "Login flow completed but no authenticated user could be detected. "
-            "Check that you reached the Blackboard homepage before confirming."
-        )
-    return username
