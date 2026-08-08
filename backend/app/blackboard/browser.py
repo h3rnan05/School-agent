@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -73,7 +73,7 @@ class ManagedBrowser:
     def screenshot_on_error(self, page, label: str) -> None:
         try:
             self._settings.debug_screenshots_dir.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             target = self._settings.debug_screenshots_dir / f"{label}-{ts}.png"
             page.screenshot(path=str(target))
             logger.info("Saved debug screenshot to %s", target)

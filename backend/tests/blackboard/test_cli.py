@@ -4,7 +4,7 @@ output and to the change-detection cache correctly.
 """
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from click.testing import CliRunner
@@ -21,7 +21,7 @@ class FakeProvider(BlackboardProvider):
         self._assignments = assignments or []
 
     def login(self) -> SessionHandle:
-        return SessionHandle(authenticated=True, username="fake_user", created_at=datetime.now(UTC))
+        return SessionHandle(authenticated=True, username="fake_user", created_at=datetime.now(timezone.utc))
 
     def is_session_valid(self) -> bool:
         return True
@@ -39,7 +39,7 @@ class FakeProvider(BlackboardProvider):
         return UpcomingAssignments(upcoming=tuple(self._assignments))
 
     def health_check(self) -> ProviderHealth:
-        return ProviderHealth(ok=True, message="fake", checked_at=datetime.now(UTC))
+        return ProviderHealth(ok=True, message="fake", checked_at=datetime.now(timezone.utc))
 
 
 @pytest.fixture
@@ -129,7 +129,7 @@ def test_upcoming_command_reports_due_date_change_across_runs(monkeypatch, setti
 
     changed = make_assignment(
         course_id="_12345_1",
-        due_date=datetime(2026, 8, 15, 23, 59, tzinfo=UTC),
+        due_date=datetime(2026, 8, 15, 23, 59, tzinfo=timezone.utc),
     )
     fake_second = FakeProvider(courses=[course], assignments=[changed])
     monkeypatch.setattr(cli_module, "get_provider", lambda s: fake_second)

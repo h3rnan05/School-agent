@@ -23,10 +23,16 @@ pull the branch) locally and follow the steps below.
 
 ## Setup
 
+Requires **Python 3.9+**. On macOS, the system `python3` (from Xcode
+Command Line Tools) is commonly 3.9 — that's fine, this code is tested
+against it, but if `python3 --version` shows something older, install a
+newer Python (e.g. `brew install python@3.11`) first.
+
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install --upgrade pip        # macOS's bundled pip is often very old
 pip install -r requirements.txt
 playwright install chromium      # downloads the browser binary Playwright drives
 ```

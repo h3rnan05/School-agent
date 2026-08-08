@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.blackboard.auth import (
@@ -163,7 +163,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             message = "session valid" if ok else "no valid session"
         except BlackboardUnavailableError as exc:
             ok, message = False, str(exc)
-        return ProviderHealth(ok=ok, message=message, checked_at=datetime.now(UTC))
+        return ProviderHealth(ok=ok, message=message, checked_at=datetime.now(timezone.utc))
 
     # -- internals -----------------------------------------------------
     def _authenticated_browser(self):
@@ -232,7 +232,7 @@ def bucket_assignments(
     include_no_due_date: bool,
 ) -> UpcomingAssignments:
     """Pure helper (no I/O) so it can be unit tested without a provider."""
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     window_end = now + timedelta(days=days)
 
     upcoming = []

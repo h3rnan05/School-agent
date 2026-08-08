@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import stat
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -102,13 +102,13 @@ def wait_for_manual_login(page, base_url: str, timeout_seconds: int) -> None:
     print(f"Once you're fully logged in and can see your Blackboard homepage ({base_url}),")
     input("press ENTER here to continue... ")
 
-    deadline = datetime.now(UTC).timestamp() + timeout_seconds
+    deadline = datetime.now(timezone.utc).timestamp() + timeout_seconds
     try:
         page.wait_for_load_state("networkidle", timeout=5000)
     except Exception:  # noqa: BLE001 - best-effort only, never fatal
         pass
 
-    if datetime.now(UTC).timestamp() > deadline:
+    if datetime.now(timezone.utc).timestamp() > deadline:
         raise MFATimeoutError(f"Manual login was not confirmed within {timeout_seconds}s")
 
 
@@ -116,7 +116,7 @@ def build_session_handle(username: str | None) -> SessionHandle:
     return SessionHandle(
         authenticated=username is not None,
         username=username,
-        created_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
     )
 
 

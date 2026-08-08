@@ -1,13 +1,13 @@
 """AssignmentParser routes by Course.course_view, never by the
 institution's overall Blackboard Experience — the core Phase 2.1 fix."""
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from app.blackboard.dto import CourseView
 from app.blackboard.parsers import AssignmentParser
 from tests.blackboard.factories import make_course
 
 BASE_URL = "https://university.blackboard.com"
-FIXED_NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+FIXED_NOW = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
 
 
 def test_routes_original_course_view_to_original_parser(load_fixture):

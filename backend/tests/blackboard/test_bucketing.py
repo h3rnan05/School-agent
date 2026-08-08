@@ -1,4 +1,6 @@
-from datetime import UTC, datetime, timedelta
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
 
 from app.blackboard.dto import AssignmentTimingStatus, DueDateStatus
 from app.blackboard.providers.playwright_provider import bucket_assignments
@@ -15,7 +17,7 @@ def relative_assignment(assignment_id: str, days_from_now: float | None, **overr
             timing_status=AssignmentTimingStatus.NO_DUE_DATE,
             **overrides,
         )
-    due = datetime.now(UTC) + timedelta(days=days_from_now)
+    due = datetime.now(timezone.utc) + timedelta(days=days_from_now)
     return make_assignment(
         id=assignment_id,
         due_date=due,

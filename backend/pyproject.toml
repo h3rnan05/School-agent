@@ -4,7 +4,11 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 110
-target-version = "py311"
+# Match the oldest Python we actually need to run on (macOS system Python
+# via Xcode Command Line Tools is commonly 3.9) — this stops ruff's
+# pyupgrade rules from "fixing" code to use syntax (e.g. datetime.UTC,
+# added in 3.11) that doesn't exist yet on that interpreter.
+target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -14,7 +18,13 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501", "UP042"]
 
 [tool.mypy]
-python_version = "3.11"
+# Deliberately NOT pinned to 3.9 here: mypy parses installed third-party
+# packages (e.g. click) with whatever python_version is set, and some of
+# them use version-gated syntax (match statements) that only parses
+# correctly against a newer target — that's a mypy/dependency friction
+# issue, not a real compatibility problem in this codebase. The actual
+# "does this run on 3.9" guarantee comes from ruff's target-version above
+# plus actually running the test suite under a real 3.9 interpreter.
 ignore_missing_imports = true
 disallow_untyped_defs = false
 warn_unused_ignores = true

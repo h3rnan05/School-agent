@@ -1,5 +1,5 @@
 """Shared test-data builders for the Blackboard module's test suite."""
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.blackboard.dto import (
@@ -24,7 +24,7 @@ def make_assignment(**overrides: Any) -> Assignment:
         title="Chapter 4 Homework",
         description=None,
         instructions=None,
-        due_date=datetime(2026, 8, 10, 23, 59, tzinfo=UTC),
+        due_date=datetime(2026, 8, 10, 23, 59, tzinfo=timezone.utc),
         due_date_raw="August 10, 2026 11:59 PM",
         due_date_status=DueDateStatus.OK,
         timezone="UTC",

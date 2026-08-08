@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -14,7 +14,7 @@ def test_no_changes_returns_empty_list():
 
 def test_detects_due_date_change():
     old = make_assignment()
-    new = make_assignment(due_date=datetime(2026, 8, 12, 23, 59, tzinfo=UTC))
+    new = make_assignment(due_date=datetime(2026, 8, 12, 23, 59, tzinfo=timezone.utc))
 
     changes = diff_assignments(old, new)
     assert len(changes) == 1

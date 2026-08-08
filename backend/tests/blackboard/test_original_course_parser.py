@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from app.blackboard.dto import AssignmentTimingStatus, DueDateStatus, FieldStatus
 from app.blackboard.parsers import OriginalCourseParser
 
 BASE_URL = "https://university.blackboard.com"
 COURSE_ID = "_12345_1"
-FIXED_NOW = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
+FIXED_NOW = datetime(2026, 8, 8, 12, 0, tzinfo=timezone.utc)
 
 
 def _by_title(assignments, title):
