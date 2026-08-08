@@ -204,6 +204,25 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             ok, message = False, str(exc)
         return ProviderHealth(ok=ok, message=message, checked_at=datetime.now(timezone.utc))
 
+    # -- debug tooling (Playwright-specific, not part of BlackboardProvider) --
+    def dump_courses_html(self, output_path: Path) -> Path:
+        """Saves the raw HTML of the course list page to disk, read-only,
+        using the already-saved session (no new login needed).
+
+        Exists because the real selector work for a new institution can't
+        happen from guesses alone (see parsers/DOM_NOTES.md) — this gives a
+        way to hand over real markup without needing DevTools knowledge or
+        ever sharing login/session data, which never touches this file.
+        """
+        with self._authenticated_browser() as (browser, page):
+            page.goto(self._settings.courses_list_url)
+            self._assert_logged_in(page)
+            html = page.content()
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html, encoding="utf-8")
+        return output_path
+
     # -- internals -----------------------------------------------------
     def _authenticated_browser(self):
         plaintext_dir = tempfile.TemporaryDirectory()

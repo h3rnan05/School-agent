@@ -71,8 +71,13 @@ def courses() -> None:
         sys.exit(1)
 
     if not found:
-        click.echo("No courses found. This may mean the parser needs updating for your")
-        click.echo("Blackboard skin — see ARCHITECTURE.md section 16 for what to share.")
+        click.echo("No courses found. This almost certainly means the parser needs updating")
+        click.echo("for your Blackboard's real markup — run this to help fix it:")
+        click.echo("")
+        click.echo("    python -m app.blackboard debug-dump-courses-html")
+        click.echo("")
+        click.echo("It saves the real page HTML to a local file (no login/session data in it)")
+        click.echo("that can be shared to build correct selectors instead of guesses.")
         return
 
     click.echo("COURSES FOUND\n")
@@ -91,6 +96,38 @@ def courses() -> None:
             "(shown as UNKNOWN above) — the parser didn't find an 'Original/Ultra Course View' "
             "label on the card. See backend/README.md if you can share the real markup."
         )
+
+
+@cli.command(name="debug-dump-courses-html")
+def debug_dump_courses_html() -> None:
+    """Save the raw HTML of your Blackboard course list page to a local file.
+
+    Uses your already-saved session (run `login` first if you haven't).
+    Read-only, no new browser interaction needed. The saved file contains
+    the same page content you'd see yourself in the browser — never any
+    login, cookie, or session data.
+    """
+    settings = load_settings()
+    provider = get_provider(settings)
+    dump = getattr(provider, "dump_courses_html", None)
+    if dump is None:
+        click.echo(
+            "This command is only available with the Playwright provider "
+            "(current BLACKBOARD_PROVIDER_IMPL doesn't support it).",
+            err=True,
+        )
+        sys.exit(1)
+
+    try:
+        path = dump(settings.debug_html_dir / "courses_page.html")
+    except BlackboardError as exc:
+        click.echo(f"Could not dump the course list page: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Saved the course list page's HTML to:\n{path}\n")
+    click.echo("Open it and copy the chunk around one of your course cards (course name")
+    click.echo("or instructor text is fine to include — there's no login/session data in")
+    click.echo("this file) so real selectors can replace the guessed ones.")
 
 
 @cli.command()

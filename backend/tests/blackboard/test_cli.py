@@ -139,3 +139,33 @@ def test_upcoming_command_reports_due_date_change_across_runs(monkeypatch, setti
     assert result.exit_code == 0
     assert "[CHANGED]" in result.output
     assert "due date" in result.output
+
+
+class FakeProviderWithDump(FakeProvider):
+    def dump_courses_html(self, output_path):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("<html>fake dump</html>", encoding="utf-8")
+        return output_path
+
+
+def test_debug_dump_courses_html_reports_saved_path(monkeypatch, settings):
+    fake = FakeProviderWithDump()
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-courses-html"])
+
+    assert result.exit_code == 0
+    assert "Saved the course list page's HTML to:" in result.output
+    assert str(settings.debug_html_dir / "courses_page.html") in result.output
+
+
+def test_debug_dump_courses_html_unavailable_on_providers_without_it(monkeypatch, settings):
+    fake = FakeProvider()  # no dump_courses_html method
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-courses-html"])
+
+    assert result.exit_code == 1
+    assert "only available with the Playwright provider" in result.output

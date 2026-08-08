@@ -45,6 +45,10 @@ class BlackboardSettings:
         return self.state_dir / "debug_screenshots"
 
     @property
+    def debug_html_dir(self) -> Path:
+        return self.state_dir / "debug_html"
+
+    @property
     def snapshot_cache_path(self) -> Path:
         return self.state_dir / "cache" / "assignments_snapshot.json"
 
