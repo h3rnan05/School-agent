@@ -545,8 +545,28 @@ class BlackboardProvider(ABC):
   oficial el día de mañana no debería tocar nada más que esta capa.
 
 El resto del diseño del módulo Playwright (`auth.py`, `browser.py`,
-`courses.py`, `assignments.py`, `attachments.py`, `parser.py`, resiliencia
-ante cambios de UI, read-only estricto) se mantiene igual que en la Fase 1.
+resiliencia ante cambios de UI, read-only estricto) se mantiene igual que
+en la Fase 1.
+
+**Actualización Fase 2.1 (validación contra UDEM real):** se confirmó que
+una institución puede estar en Ultra Experience a nivel de navegación
+(`/ultra/course`) mientras cursos individuales siguen en Original Course
+View — no se puede asumir un solo tipo de curso por institución. Por eso
+el parsing dentro de `PlaywrightBlackboardProvider` se dividió en
+`parsers/`:
+
+```
+CourseListParser      → Course DTOs, incluyendo course_view (ORIGINAL/ULTRA/UNKNOWN) por curso
+AssignmentParser       → enruta por Course.course_view, nunca por la experiencia de la institución
+  ├── OriginalCourseParser   (implementado, probado con fixtures)
+  └── UltraCourseParser      (stub — sin evidencia de DOM real todavía)
+```
+
+`Course` ahora incluye `course_view` e `instructor`. El campo `course_view`
+nunca se asume: si no se encuentra la etiqueta que Blackboard muestra
+("Original Course View" / "Ultra Course View"), queda `UNKNOWN` en vez de
+adivinarse. Detalle completo y evidencia de cada selector en
+`backend/app/blackboard/parsers/DOM_NOTES.md`.
 
 ---
 

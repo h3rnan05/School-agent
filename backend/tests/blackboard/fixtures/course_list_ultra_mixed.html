@@ -1,0 +1,36 @@
+<!--
+  Synthetic fixture modeled on the Phase 2.1 UDEM report: an Ultra
+  Experience course-list page (/ultra/course) whose individual course
+  cards report their own "Course view" (Original vs Ultra), plus one card
+  with no course-view label at all to exercise the UNKNOWN fallback.
+  NOT captured from real UDEM HTML — no real DOM sample was available.
+-->
+<html>
+<body>
+  <div aria-label="My Courses">
+
+    <div data-testid="course-list-item">
+      <a href="/ultra/courses/_98765_1/outline" aria-label="Open course">FINC 301 - Corporate Finance</a>
+      <div>Course view</div>
+      <div>Original Course View</div>
+      <div>Instructor</div>
+      <div>Dr. Maria Gonzalez</div>
+      <button>Open</button>
+      <a href="/ultra/courses/_98765_1/more-info">More info</a>
+    </div>
+
+    <div data-testid="course-list-item">
+      <a href="/ultra/courses/_98766_1/outline" aria-label="Open course">CS 450 - Machine Learning</a>
+      <div>Course view</div>
+      <div>Ultra Course View</div>
+      <div>Instructor</div>
+      <div>Dr. Carlos Ruiz</div>
+    </div>
+
+    <div data-testid="course-list-item">
+      <a href="/ultra/courses/_98767_1/outline" aria-label="Open course">Elective Seminar</a>
+    </div>
+
+  </div>
+</body>
+</html>

@@ -16,6 +16,7 @@ def make_settings(tmp_path) -> BlackboardSettings:
         request_timeout_ms=5000,
         max_retries=1,
         headless_for_non_login=True,
+        courses_path="/ultra/course",
     )
 
 

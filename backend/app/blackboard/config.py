@@ -21,6 +21,16 @@ class BlackboardSettings:
     request_timeout_ms: int
     max_retries: int
     headless_for_non_login: bool
+    courses_path: str
+
+    @property
+    def courses_list_url(self) -> str:
+        """Where the course list page lives. Defaults to Ultra Experience's
+        `/ultra/course` (confirmed against a real institution in Phase 2.1);
+        override BLACKBOARD_COURSES_PATH for an Original Experience
+        institution, where it's typically just the portal homepage (`""`).
+        """
+        return self.base_url + self.courses_path
 
     @property
     def storage_state_path(self) -> Path:
@@ -58,4 +68,5 @@ def load_settings() -> BlackboardSettings:
         request_timeout_ms=int(os.environ.get("BLACKBOARD_REQUEST_TIMEOUT_MS", "30000")),
         max_retries=int(os.environ.get("BLACKBOARD_MAX_RETRIES", "3")),
         headless_for_non_login=os.environ.get("BLACKBOARD_HEADLESS", "true").lower() != "false",
+        courses_path=os.environ.get("BLACKBOARD_COURSES_PATH", "/ultra/course"),
     )

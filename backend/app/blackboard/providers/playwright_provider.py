@@ -7,9 +7,9 @@ anything that submits a form, never fills in submission text boxes, never
 touches grade or settings pages.
 
 Browser automation (this file) is kept separate from HTML parsing
-(parser.py) so the parsing rules can be tested with saved fixtures without
-a browser. This file's job is only: get a page, get its HTML, hand it to
-the parser.
+(the parsers/ package) so the parsing rules can be tested with saved
+fixtures without a browser. This file's job is only: get a page, get its
+HTML, hand it to the right parser for that course's course_view.
 """
 from __future__ import annotations
 
@@ -35,13 +35,13 @@ from app.blackboard.exceptions import (
     NoSessionError,
     SessionExpiredError,
 )
-from app.blackboard.parser import parse_assignments_page, parse_courses_page, with_recomputed_timing_status
+from app.blackboard.parsers import AssignmentParser, CourseListParser, with_recomputed_timing_status
 from app.blackboard.provider import BlackboardProvider, ProviderHealth, SessionHandle
 
 logger = logging.getLogger("blackboard.provider.playwright")
 
 # Candidate selectors for detecting the logged-in username. Tried in order;
-# see parser.py's module docstring for why this is a fallback list rather
+# see parsers/course_list.py's module docstring for why this is a fallback list rather
 # than a single fixed selector.
 USERNAME_SELECTORS = [
     '[data-testid="global-nav-user-menu"]',
@@ -61,6 +61,8 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         self._settings = settings
         self._session_store = SessionStore(settings)
         self._course_cache: dict[str, Course] | None = None
+        self._course_list_parser = CourseListParser()
+        self._assignment_parser = AssignmentParser()
 
     # -- session -----------------------------------------------------
     def login(self) -> SessionHandle:
@@ -108,10 +110,10 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
     def get_courses(self) -> list[Course]:
         def _fetch() -> list[Course]:
             with self._authenticated_browser() as (browser, page):
-                page.goto(self._settings.base_url)
+                page.goto(self._settings.courses_list_url)
                 self._assert_logged_in(page)
                 html = page.content()
-                return parse_courses_page(html, self._settings.base_url)
+                return self._course_list_parser.parse(html, self._settings.base_url)
 
         courses = with_retries(_fetch, self._settings.max_retries, "get_courses")
         self._course_cache = {c.id: c for c in courses}
@@ -130,9 +132,9 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                     page.goto(content_href)
 
                 html = page.content()
-                return parse_assignments_page(
+                return self._assignment_parser.parse(
                     html,
-                    course_id=course_id,
+                    course=course,
                     base_url=self._settings.base_url,
                     timezone=self._settings.timezone,
                 )

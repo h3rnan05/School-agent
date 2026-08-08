@@ -59,12 +59,31 @@ class AssignmentKind(str, Enum):
     UNKNOWN = "unknown"
 
 
+class CourseView(str, Enum):
+    """Which Blackboard course-content system a given course uses.
+
+    Discovered during Phase 2.1 (real UDEM Blackboard): the *institution*
+    can be on Ultra Experience (its course list lives at /ultra/course)
+    while *individual courses* are still built with Original Course View.
+    A course's view is never assumed from the institution's experience —
+    it's read per-course, and UNKNOWN when it can't be determined, so the
+    right parser (OriginalCourseParser vs UltraCourseParser) is picked
+    deliberately instead of guessed. See parsers/dispatch.py.
+    """
+
+    ORIGINAL = "ORIGINAL"
+    ULTRA = "ULTRA"
+    UNKNOWN = "UNKNOWN"
+
+
 @dataclass(frozen=True)
 class Course:
     id: str
     name: str
     url: str
     term: str | None
+    course_view: CourseView
+    instructor: str | None
     source: ProviderSource
 
 

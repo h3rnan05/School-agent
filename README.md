@@ -5,14 +5,22 @@ detectar assignments próximos a vencer, sincronizarlos con Google Calendar,
 y preparar material de apoyo (research, outlines, drafts) con revisión humana
 obligatoria antes de cualquier entrega.
 
-## Estado del proyecto: Fase 2 — Módulo de Blackboard implementado
+## Estado del proyecto: Fase 2.1 — Validación contra Blackboard real (UDEM), pendiente de correr localmente
 
-Arquitectura (Fase 1.5) **aprobada**. Primer módulo de código real
-construido y probado: [`backend/`](./backend) contiene `BlackboardProvider`
-con su implementación `PlaywrightBlackboardProvider` — acceso **solo
-lectura** a Blackboard, sin guardar tu contraseña nunca. Ver
-[`backend/README.md`](./backend/README.md) para cómo instalarlo y correr
-`blackboard login / courses / assignments / upcoming`.
+Arquitectura (Fase 1.5) **aprobada**. Módulo de Blackboard construido y
+extendido con los datos reales de UDEM (`cursos-udem.blackboard.com`,
+Ultra Experience, cursos individuales en Original Course View):
+[`backend/`](./backend) contiene `BlackboardProvider` /
+`PlaywrightBlackboardProvider`, con parsers separados por tipo de curso
+(`CourseListParser`, `OriginalCourseParser`, `UltraCourseParser`,
+`AssignmentParser`) — acceso **solo lectura**, sin guardar tu contraseña
+nunca.
+
+**Importante**: el login interactivo (`blackboard login`) no se puede
+ejecutar dentro de una sesión de Claude Code en la nube — no hay pantalla
+ni terminal interactiva de tu lado ahí. Tenés que correrlo en tu propia
+máquina; ver [`backend/README.md`](./backend/README.md), sección "this
+must be run on YOUR machine", para el detalle y los siguientes pasos.
 
 Deliberadamente fuera de esta fase (según lo pedido): PostgreSQL, Google
 Calendar, Claude/IA, Telegram, frontend, y cualquier tipo de submission.
@@ -56,13 +64,13 @@ del flujo siempre requiere aprobación humana explícita.
 
 ## Próximos pasos
 
-La Fase 2 (módulo de Blackboard) queda entregada para que la pruebes contra
-tu Blackboard real siguiendo `backend/README.md`. Es muy probable que el
-parser (`backend/app/blackboard/parser.py`) necesite ajustes de selectores
-una vez lo corras de verdad — se escribió sin acceso a HTML real de tu
-Blackboard, de forma honesta y documentada (ver `ARCHITECTURE.md` sección
-16 y el aviso en `backend/README.md`).
-
-No se avanza a la siguiente fase (Google Calendar, IA, notificaciones,
-frontend) hasta que confirmes que `login`, `courses`, `assignments` y
-`upcoming` funcionan correctamente contra tu Blackboard.
+1. Corré `blackboard login / courses / assignments / upcoming` en tu
+   máquina (no en esta sesión) siguiendo `backend/README.md`.
+2. Si `courses` o `assignments` viene vacío o con datos incorrectos, es
+   casi seguro un tema de selectores — pasame lo que pide
+   `backend/app/blackboard/parsers/DOM_NOTES.md` (HTML de una sola tarjeta
+   de curso, sin necesidad de compartir tu sesión ni contraseña) y lo
+   ajusto con evidencia real en vez de adivinar de nuevo.
+3. No avanzo a la siguiente fase (Google Calendar, IA, notificaciones,
+   frontend) hasta que confirmes que el pipeline completo funciona contra
+   tu Blackboard real.

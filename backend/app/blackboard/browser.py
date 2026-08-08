@@ -1,6 +1,6 @@
 """Thin wrapper around Playwright: context lifecycle, retries, timeouts,
 and best-effort debug screenshots on failure. No parsing logic lives here —
-see parser.py.
+see the parsers/ package.
 """
 from __future__ import annotations
 

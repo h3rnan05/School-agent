@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from app.blackboard.dto import AssignmentTimingStatus, DueDateStatus, FieldStatus
-from app.blackboard.parser import parse_assignments_page
+from app.blackboard.parsers import OriginalCourseParser
 
 BASE_URL = "https://university.blackboard.com"
 COURSE_ID = "_12345_1"
@@ -12,9 +12,13 @@ def _by_title(assignments, title):
     return next(a for a in assignments if a.title == title)
 
 
+def _parse(html):
+    return OriginalCourseParser().parse(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+
+
 def test_extracts_due_date_points_attachments_and_rubric_ref(load_fixture):
     html = load_fixture("assignments_original.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
 
     homework = _by_title(result, "Chapter 4 Homework")
     assert homework.due_date_status == DueDateStatus.OK
@@ -33,7 +37,7 @@ def test_extracts_due_date_points_attachments_and_rubric_ref(load_fixture):
 
 def test_missing_due_date_is_not_invented(load_fixture):
     html = load_fixture("assignments_original.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
 
     discussion = _by_title(result, "Discussion: Introduce Yourself")
     assert discussion.due_date is None
@@ -43,7 +47,7 @@ def test_missing_due_date_is_not_invented(load_fixture):
 
 def test_unparseable_due_date_is_flagged_not_guessed(load_fixture):
     html = load_fixture("assignments_original.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
 
     project = _by_title(result, "Group Project Kickoff")
     assert project.due_date is None
@@ -54,7 +58,7 @@ def test_unparseable_due_date_is_flagged_not_guessed(load_fixture):
 
 def test_missing_points_is_not_present_not_zero(load_fixture):
     html = load_fixture("assignments_original.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
 
     quiz = _by_title(result, "Midterm Quiz")
     assert quiz.points is None
@@ -63,7 +67,7 @@ def test_missing_points_is_not_present_not_zero(load_fixture):
 
 def test_item_without_a_link_is_skipped_not_crashed(load_fixture):
     html = load_fixture("assignments_original.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
     titles = [a.title for a in result]
     assert "" not in titles
     assert len(result) == 4  # 5 items in fixture, 1 has no link
@@ -71,21 +75,19 @@ def test_item_without_a_link_is_skipped_not_crashed(load_fixture):
 
 def test_no_items_returns_empty_list_not_error(load_fixture):
     html = load_fixture("assignments_no_items.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
     assert result == []
 
 
 def test_malformed_html_does_not_crash(load_fixture):
     html = load_fixture("assignments_malformed.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
-    # BeautifulSoup repairs unclosed tags; we only assert this never raises
-    # and returns a list (possibly partial) rather than throwing.
+    result = _parse(html)
     assert isinstance(result, list)
 
 
 def test_timing_status_upcoming_vs_overdue(load_fixture):
     html = load_fixture("assignments_original.html")
-    result = parse_assignments_page(html, COURSE_ID, BASE_URL, timezone="UTC", now=FIXED_NOW)
+    result = _parse(html)
 
     homework = _by_title(result, "Chapter 4 Homework")  # due Aug 12, now is Aug 8
     assert homework.timing_status == AssignmentTimingStatus.UPCOMING

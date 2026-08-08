@@ -3,6 +3,7 @@ from app.blackboard.dto import (
     AssignmentTimingStatus,
     AttachmentRef,
     Course,
+    CourseView,
     FieldStatus,
     UpcomingAssignments,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "AttachmentRef",
     "BlackboardProvider",
     "Course",
+    "CourseView",
     "FieldStatus",
     "ProviderHealth",
     "SessionHandle",

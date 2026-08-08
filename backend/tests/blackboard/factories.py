@@ -6,6 +6,8 @@ from app.blackboard.dto import (
     Assignment,
     AssignmentKind,
     AssignmentTimingStatus,
+    Course,
+    CourseView,
     DueDateStatus,
     FieldStatus,
 )
@@ -34,3 +36,17 @@ def make_assignment(**overrides: Any) -> Assignment:
     )
     defaults.update(overrides)
     return Assignment(**defaults)
+
+
+def make_course(**overrides: Any) -> Course:
+    defaults: dict[str, Any] = dict(
+        id="_12345_1",
+        name="FINANCE 301 - Corporate Finance",
+        url="https://university.blackboard.com/ultra/courses/_12345_1/outline",
+        term=None,
+        course_view=CourseView.ORIGINAL,
+        instructor=None,
+        source="playwright",
+    )
+    defaults.update(overrides)
+    return Course(**defaults)
