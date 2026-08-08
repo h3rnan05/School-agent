@@ -151,6 +151,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             with self._authenticated_browser() as (browser, page):
                 page.goto(self._settings.courses_list_url)
                 self._assert_logged_in(page)
+                self._wait_for_render(page)
                 html = page.content()
                 return self._course_list_parser.parse(html, self._settings.base_url)
 
@@ -165,10 +166,12 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             with self._authenticated_browser() as (browser, page):
                 page.goto(course.url)
                 self._assert_logged_in(page)
+                self._wait_for_render(page)
 
                 content_href = self._find_content_link(page)
                 if content_href:
                     page.goto(content_href)
+                    self._wait_for_render(page)
 
                 html = page.content()
                 return self._assignment_parser.parse(
@@ -217,6 +220,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         with self._authenticated_browser() as (browser, page):
             page.goto(self._settings.courses_list_url)
             self._assert_logged_in(page)
+            self._wait_for_render(page)
             html = page.content()
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -273,6 +277,19 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             pass
         url = (page.url or "").lower()
         return any(hint in url for hint in LOGIN_PAGE_URL_HINTS)
+
+    def _wait_for_render(self, page) -> None:
+        """Blackboard Ultra pages are React SPAs: the initial page load
+        fires before course/assignment data has actually been fetched and
+        rendered into the DOM. Grabbing page.content() right after goto()
+        can capture an empty shell rather than real content. This waits
+        (best-effort — never raises) for network activity to settle before
+        any page.content() call, giving the app time to render.
+        """
+        try:
+            page.wait_for_load_state("networkidle", timeout=self._settings.request_timeout_ms)
+        except Exception:  # noqa: BLE001 - best-effort only; proceed with whatever rendered so far
+            logger.debug("networkidle wait did not complete; proceeding with current page state")
 
     def _find_content_link(self, page) -> str | None:
         try:
