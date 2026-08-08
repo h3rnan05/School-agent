@@ -3,12 +3,19 @@ against a real Original Course View course (real UDEM Blackboard). It
 saves the raw HTML plus the URLs actually navigated to/landed on, since
 "no assignments found" from OriginalCourseParser could mean either wrong
 selectors OR the wrong page entirely — this tells the two apart.
+
+Also covers _resolve_content_entry_url(): confirmed real UDEM finding that
+an ORIGINAL Course View course's Ultra outline page embeds its real
+content in an <iframe>, invisible to page.content() — so ORIGINAL courses
+must start from the classic courseMain URL instead of course.url.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
+from pathlib import Path
 
 from app.blackboard.config import BlackboardSettings
+from app.blackboard.dto import CourseView
 from app.blackboard.providers.playwright_provider import PlaywrightBlackboardProvider
 from tests.blackboard.factories import make_course
 
@@ -42,8 +49,10 @@ class _FakePage:
         self._html = html
         self.url = url
         self._links = links or []
+        self.goto_calls: list[str] = []
 
     def goto(self, url: str) -> None:
+        self.goto_calls.append(url)
         self.url = url
 
     def locator(self, selector: str) -> _FakeLocator:
@@ -78,10 +87,45 @@ def make_provider_with_cached_course(tmp_path, course):
     return provider
 
 
-def test_dump_course_html_without_a_content_link(tmp_path, monkeypatch):
-    course = make_course(id="_424872_1", url="https://university.blackboard.com/ultra/courses/_424872_1/outline")
+def test_resolve_content_entry_url_for_original_course_bypasses_the_iframe():
+    """Confirmed real UDEM markup: the Ultra outline page for an ORIGINAL
+    course embeds its content in an iframe pointing here — page.content()
+    can't see into it, so this must be the actual navigation target."""
+    settings = make_settings(Path("/tmp"))
+    provider = PlaywrightBlackboardProvider(settings)
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
+
+    entry_url = provider._resolve_content_entry_url(course)
+
+    assert entry_url == "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+
+
+def test_resolve_content_entry_url_for_non_original_uses_course_url_as_is():
+    """No iframe-embedding evidence exists for ULTRA/UNKNOWN course views —
+    only the confirmed ORIGINAL case gets special-cased."""
+    settings = make_settings(Path("/tmp"))
+    provider = PlaywrightBlackboardProvider(settings)
+
+    ultra_course = make_course(id="_1_1", course_view=CourseView.ULTRA, url="https://x/ultra/courses/_1_1/outline")
+    assert provider._resolve_content_entry_url(ultra_course) == ultra_course.url
+
+    unknown_course = make_course(id="_2_2", course_view=CourseView.UNKNOWN, url="https://x/ultra/courses/_2_2/outline")
+    assert provider._resolve_content_entry_url(unknown_course) == unknown_course.url
+
+
+def test_dump_course_html_for_original_course_navigates_to_coursemain(tmp_path, monkeypatch):
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
     provider = make_provider_with_cached_course(tmp_path, course)
-    fake_page = _FakePage(html="<html><body>course outline, no content link here</body></html>", url=course.url)
+    expected_entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    fake_page = _FakePage(html="<html><body>real original-experience content</body></html>", url=expected_entry_url)
 
     @contextmanager
     def fake_authenticated_browser():
@@ -92,20 +136,26 @@ def test_dump_course_html_without_a_content_link(tmp_path, monkeypatch):
     output_path = tmp_path / "debug_html" / "course_424872.html"
     result = provider.dump_course_html("_424872_1", output_path)
 
+    assert fake_page.goto_calls[0] == expected_entry_url  # bypassed the Ultra outline/iframe entirely
     assert result.html_path == output_path
-    assert output_path.read_text(encoding="utf-8") == "<html><body>course outline, no content link here</body></html>"
-    assert result.course_url == course.url
-    assert result.url_before_content_link == course.url
+    assert output_path.read_text(encoding="utf-8") == "<html><body>real original-experience content</body></html>"
+    assert result.course_url == course.url  # still reported for reference
+    assert result.url_before_content_link == expected_entry_url
     assert result.content_link_followed is None
-    assert result.final_url == course.url  # never navigated anywhere else
+    assert result.final_url == expected_entry_url
 
 
 def test_dump_course_html_follows_a_matching_content_link(tmp_path, monkeypatch):
-    course = make_course(id="_424872_1", url="https://university.blackboard.com/ultra/courses/_424872_1/outline")
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
     provider = make_provider_with_cached_course(tmp_path, course)
-    content_url = "https://university.blackboard.com/ultra/courses/_424872_1/cl/outline"
+    entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    content_url = "https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?course_id=_424872_1"
     links = [_FakeLink(text="Course Content", href=content_url)]
-    fake_page = _FakePage(html="<html><body>real content listing</body></html>", url=course.url, links=links)
+    fake_page = _FakePage(html="<html><body>real content listing</body></html>", url=entry_url, links=links)
 
     @contextmanager
     def fake_authenticated_browser():
@@ -118,4 +168,4 @@ def test_dump_course_html_follows_a_matching_content_link(tmp_path, monkeypatch)
 
     assert result.content_link_followed == content_url
     assert result.final_url == content_url
-    assert result.url_before_content_link == course.url  # recorded before following the link
+    assert result.url_before_content_link == entry_url  # recorded before following the link

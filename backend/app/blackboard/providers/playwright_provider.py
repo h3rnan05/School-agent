@@ -24,7 +24,7 @@ from app.blackboard.auth import SessionStore, build_session_handle, wait_for_man
 from app.blackboard.browser import ManagedBrowser, with_retries
 from app.blackboard.changes import diff_assignments  # re-exported for CLI convenience
 from app.blackboard.config import BlackboardSettings
-from app.blackboard.dto import Assignment, Course, UpcomingAssignments
+from app.blackboard.dto import Assignment, Course, CourseView, UpcomingAssignments
 from app.blackboard.exceptions import (
     BlackboardUnavailableError,
     CourseUnavailableError,
@@ -178,7 +178,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
 
         def _fetch() -> list[Assignment]:
             with self._authenticated_browser() as (browser, page):
-                page.goto(course.url)
+                page.goto(self._resolve_content_entry_url(course))
                 self._assert_logged_in(page)
                 self._wait_for_render(page)
 
@@ -254,7 +254,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         course = self._resolve_course(course_id)
 
         with self._authenticated_browser() as (browser, page):
-            page.goto(course.url)
+            page.goto(self._resolve_content_entry_url(course))
             self._assert_logged_in(page)
             self._wait_for_render(page)
             url_before_content_link = page.url
@@ -340,6 +340,23 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             page.wait_for_load_state("networkidle", timeout=self._settings.request_timeout_ms)
         except Exception:  # noqa: BLE001 - best-effort only; proceed with whatever rendered so far
             logger.debug("networkidle wait did not complete; proceeding with current page state")
+
+    def _resolve_content_entry_url(self, course: Course) -> str:
+        """Where to start navigating to find a course's actual content.
+
+        Confirmed real UDEM finding: for an ORIGINAL Course View course,
+        the Ultra outline page (course.url) embeds the real content inside
+        an <iframe src="…/webapps/blackboard/execute/courseMain?course_id=
+        …">, NOT as part of the outer page — page.content() can't see into
+        a same-origin iframe's own document from the parent page at all,
+        which is exactly why get_assignments() came back with "no items
+        matched" against a real course. Navigating straight to that
+        confirmed URL pattern, instead of the Ultra wrapper, gets past the
+        iframe boundary entirely.
+        """
+        if course.course_view == CourseView.ORIGINAL:
+            return f"{self._settings.base_url}/webapps/blackboard/execute/courseMain?course_id={course.id}"
+        return course.url
 
     def _find_content_link(self, page) -> str | None:
         try:

@@ -42,9 +42,34 @@ phase, this is the one place to revisit.
 
 ## Assignments — Original Course View (`parsers/original_course.py`)
 
-Unchanged from Phase 2. Validated against synthetic fixtures only, never
-against a real Original Course View course content page. See
-`backend/README.md`'s "honest note on the parser" section.
+Parser selectors themselves are unchanged from Phase 2, still validated
+against synthetic fixtures only. But a real bug in how we even reach the
+content was found and fixed against real UDEM:
+
+**The iframe finding.** `get_assignments()` came back with "no assignment
+items matched any known selector" against a real ORIGINAL course. Turned
+out the Ultra outline page (`course.url`, e.g.
+`.../ultra/courses/_424872_1/outline`) doesn't contain the course content
+at all — it embeds it in `<iframe src="…/webapps/blackboard/execute/
+courseMain?course_id=…">`. Playwright's `page.content()` only sees the
+top-level document; a same-origin iframe's own document is invisible to
+it without explicitly switching into that frame.
+
+**CONFIRMED fix**: `PlaywrightBlackboardProvider._resolve_content_entry_url()`
+now navigates ORIGINAL-view courses straight to
+`{base_url}/webapps/blackboard/execute/courseMain?course_id={id}` instead
+of the Ultra outline page, bypassing the iframe entirely rather than
+trying to reach into it. That URL pattern itself is confirmed real (it's
+the literal iframe `src` from a real page dump); what's NOT yet confirmed
+is what `courseMain` itself contains — whether it's a direct content
+listing OriginalCourseParser's existing selectors can already handle, or
+Original Experience's own frameset (course menu frame + content frame,
+classic Blackboard UI) needing one more level of navigation.
+
+Next step to confirm: run `blackboard debug-dump-course-html <id>` again
+now that it targets `courseMain` directly, and share what
+`OriginalCourseParser`'s selectors find (or don't) against the real
+result.
 
 ## Assignments — Ultra Course View (`parsers/ultra_course.py`)
 
