@@ -10,16 +10,23 @@ rest of the system (parsers/dispatch.py) picks OriginalCourseParser vs
 UltraCourseParser based on that per-course value, never on the
 institution's experience as a whole.
 
-Phase 2.1 update — CONFIRMED against real UDEM markup (shared by the user
-from DevTools, redacted of personal data): course cards are
-`<article data-course-id="..." class="element-card course-element-card
-...">` containing `a.course-title` (the course link, with an
-`h4.js-course-title-element` for the name and a `.course-type` span next
-to it — believed to be the Course view indicator, exact text not yet
-confirmed) and a `[class*="course_username"]` span for the instructor.
-Those are now the PRIMARY selectors; the earlier data-testid/ARIA guesses
-stay as fallbacks for institutions/skins that don't match this structure.
-See parsers/DOM_NOTES.md for exactly what's confirmed vs still assumed.
+Phase 2.1 update — CONFIRMED against real UDEM markup and a real run:
+course cards are `<article data-course-id="..." class="element-card
+course-element-card ...">` containing `a.course-title` (the course link —
+its href is a JS click handler, not a real URL; the course URL is
+reconstructed from data-course-id instead) with an
+`h4.js-course-title-element` for the name and a `.course-type` span that
+really does read "Original/Ultra Course View". Those are now the PRIMARY
+selectors; the earlier data-testid/ARIA guesses stay as fallbacks for
+institutions/skins that don't match this structure.
+
+Instructor is CONFIRMED ABSENT from this collapsed card view — a real
+run's full card text was exactly "<code> | <name> | Original Course View |
+Open | More info", no instructor anywhere, and no element with
+"course_username" in its class exists on the page at all. It may only be
+available behind the "More info" toggle (unconfirmed — getting it would
+mean clicking that toggle per course, a deliberate scope decision, not
+made unilaterally here). See parsers/DOM_NOTES.md.
 """
 from __future__ import annotations
 
@@ -58,16 +65,20 @@ COURSE_TITLE_TEXT_SELECTORS = [
     "h4.js-course-title-element",  # confirmed real UDEM markup (Phase 2.1)
 ]
 
-# Believed (not yet confirmed) to hold the Original/Ultra Course View
-# label. Checked first; _course_view_from_text() falls back to scanning
-# the whole card's text if this doesn't contain a recognizable value.
+# Holds the Original/Ultra Course View label. Checked first;
+# _course_view_from_text() falls back to scanning the whole card's text if
+# this doesn't contain a recognizable value.
 COURSE_TYPE_SELECTORS = [
-    ".course-title .course-type",  # confirmed present in real UDEM markup; exact text TBD
+    ".course-title .course-type",  # confirmed real UDEM markup + text, Phase 2.1
     ".course-type",
 ]
 
-# Confirmed real UDEM markup (Phase 2.1): a span whose class starts with
-# "course_username" (with an opaque per-user suffix, hence the wildcard).
+# NOT present in the collapsed UDEM card (confirmed by a real run: no
+# element with "course_username" in its class exists on the page at all).
+# Kept as a harmless, zero-cost fallback attempt in case some other
+# Blackboard configuration does render it this way — see DOM_NOTES.md for
+# why it's not the collapsed card's fault and what filling this in for
+# real would require (clicking "More info", not done here).
 INSTRUCTOR_SELECTORS = [
     '[class*="course_username"]',
 ]

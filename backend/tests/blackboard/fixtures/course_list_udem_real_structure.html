@@ -1,14 +1,19 @@
 <!--
-  Modeled on the REAL markup structure shared by the user from DevTools
-  against cursos-udem.blackboard.com (Phase 2.1), with course/instructor
-  names replaced by synthetic values. Confirmed against a real run:
-  .course-type does read "Original Course View" (card 1's exact text),
-  and a.course-title's real href is "javascript:void(0);" (a JS click
-  handler, not a real link) — card 2 keeps a plain href to cover both
-  code paths in one fixture. Card 3 has no data-course-id at all, modeling
-  the extra non-course tile that showed up in the real run (some
-  non-course card sharing this markup) — it must be filtered out, not
-  turned into a garbage entry.
+  Modeled on the REAL markup structure confirmed against
+  cursos-udem.blackboard.com (Phase 2.1), course names replaced by
+  synthetic values. Confirmed against a real run:
+  - .course-type does read "Original Course View" (card 1's exact text).
+  - a.course-title's real href is "javascript:void(0);" (a JS click
+    handler, not a real link) — card 2 keeps a plain href to cover both
+    code paths in one fixture.
+  - There is NO instructor element in the collapsed card at all — a real
+    run's full card text was exactly "<code> | <name> | Original Course
+    View | Open | More info". No course_username (or any instructor)
+    element present; omitted here to match reality instead of an earlier,
+    apparently-wrong guess.
+  - Card 3 has no data-course-id at all, modeling the extra non-course
+    tile that showed up in the real run — must be filtered out, not
+    turned into a garbage entry.
 -->
 <html>
 <body>
@@ -27,7 +32,6 @@
           </a>
         </div>
         <div class="small-8 status-bar">
-          <span class="course_username course_user_1">Dr. Maria Gonzalez</span>
           <div class="more-info-toggle js-more-info-toggle">
             <button>More info</button>
           </div>
@@ -51,7 +55,6 @@
           </a>
         </div>
         <div class="small-8 status-bar">
-          <span class="course_username course_user_2">Dr. Carlos Ruiz</span>
           <div class="more-info-toggle js-more-info-toggle">
             <button>More info</button>
           </div>

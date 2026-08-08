@@ -21,44 +21,24 @@ correctly returned all 5 real course names with `course_view: ORIGINAL`.
 | Course link href | — | If the href isn't a real URL (see next row), the URL is reconstructed as `{base_url}/ultra/courses/{course_id}/outline` from the confirmed course id instead | **CONFIRMED (real run): real UDEM cards use `href="javascript:void(0);"`** — a JS click handler, not a link. Course URLs are never read from this href; they're always reconstructed from `data-course-id`. |
 | Course name | `h4.js-course-title-element` text, inside the course-title link | Link's own text, then its `aria-label`, then the course id | **CONFIRMED (real run)** — returned real names like "AD-1321-19 Gestión de negocios" correctly. |
 | Course view | `.course-title .course-type` text, checked against `"original/ultra course view"` | `.course-type` anywhere in the card, then a whole-card text scan, then `UNKNOWN` | **CONFIRMED (real run)** — `.course-type` really does read "Original Course View"; all 5 of the user's courses came back correctly as `ORIGINAL`. |
-| Instructor | `[class*="course_username"]` text | Line-based label scan for `/instructor/i` | **NOT working against the real page** — came back `(not found)` for all 5 courses in a real run, despite the class existing per the user's own DevTools inspection. Open question — see below. |
+| Instructor | `[class*="course_username"]` text | Line-based label scan for `/instructor/i` | **CONFIRMED ABSENT from the collapsed card (real run).** A real card's full text was exactly `<code> \| <name> \| Original Course View \| Open \| More info` — no instructor anywhere, and no element with `course_username` (or anything else instructor-shaped) in its class exists on the page. `instructor: None` is the correct, accurate result for this view — not a parser miss. |
 | Term | — | Always `None` | Not attempted — no evidence a term/semester label exists on the card; left unset rather than guessed. |
 
-### Open question: why is the instructor selector missing?
+### Resolved: instructor isn't available without an extra click
 
-Three live hypotheses, in order of likelihood:
+The earlier `course_username` selector was based on a description that
+turned out not to match the collapsed card — likely from inspecting the
+"More info" panel already expanded. Confirmed via a real run's full card
+text (see above): the instructor name simply isn't in the DOM at all until
+that toggle is clicked.
 
-1. The `course_username` span is empty/absent in the *collapsed* card view
-   and only gets populated when the "More info" toggle is clicked (would
-   explain why it "exists" on inspection but the parser finds nothing —
-   DevTools inspection may have happened after clicking it).
-2. The real class name differs slightly from what was described (e.g. a
-   different word order/casing than `course_username`).
-3. The instructor field is simply blank for these particular courses in
-   Blackboard itself (some institutions don't populate it on every course).
-
-To tell which one it is, from `backend/` with the venv active:
-
-```bash
-python -m app.blackboard debug-dump-courses-html
-python3 -c "
-from bs4 import BeautifulSoup
-html = open('$HOME/.school-agent/debug_html/courses_page.html', encoding='utf-8').read()
-soup = BeautifulSoup(html, 'html.parser')
-card = soup.select_one('article[data-course-id]')
-print('any element with course_username in its class:',
-      [(el.name, el.get('class')) for el in card.find_all(class_=lambda c: c and 'course_username' in ' '.join(c).lower())])
-print('full card text:', card.get_text(' | ', strip=True))
-"
-```
-
-Paste the output (instructor names in it are fine to share — they're the
-same info Blackboard already shows you). If hypothesis 1 is right
-(instructor is genuinely absent until "More info" is clicked), the fix is
-either accepting `instructor: None` as correct for the collapsed view, or
-adding a deliberate, disclosed click on that toggle before parsing — worth
-deciding explicitly rather than silently, since Phase 2 was built to
-minimize unnecessary page interactions.
+That makes filling it in a genuine scope decision, not a bug fix: it would
+mean clicking "More info" once per course (still read-only, but more
+browser interaction than today) to reveal it, and there's no confirmation
+yet that the expanded panel even contains the instructor's name either.
+Not implemented — `instructor` stays `None` for now, which is the accurate
+result for the collapsed view. If it turns out to matter for a later
+phase, this is the one place to revisit.
 
 ## Assignments — Original Course View (`parsers/original_course.py`)
 

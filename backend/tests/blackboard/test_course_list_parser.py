@@ -83,11 +83,12 @@ def test_missing_course_links_returns_empty_list_not_error(load_fixture):
 
 
 def test_parses_real_udem_card_structure(load_fixture):
-    """Modeled on the actual markup the user shared from DevTools
+    """Modeled on real markup confirmed against cursos-udem.blackboard.com
     (Phase 2.1): article[data-course-id] cards, a.course-title link with
-    an h4.js-course-title-element name and a .course-type span, and a
-    [class*="course_username"] instructor span. course_view text
-    ("Original Course View") was confirmed correct against a real run."""
+    an h4.js-course-title-element name and a .course-type span. Both the
+    course_view text ("Original Course View") and the absence of any
+    instructor element in the collapsed card were confirmed against a
+    real run — instructor is correctly None here, not a parser miss."""
     html = load_fixture("course_list_udem_real_structure.html")
     courses = CourseListParser().parse(html, BASE_URL)
 
@@ -95,7 +96,7 @@ def test_parses_real_udem_card_structure(load_fixture):
 
     finance = _by_id(courses, "_555111_1")
     assert finance.name == "FINC 301 - Corporate Finance"
-    assert finance.instructor == "Dr. Maria Gonzalez"
+    assert finance.instructor is None  # confirmed absent from the collapsed card, not a bug
     assert finance.course_view == CourseView.ORIGINAL
 
 
