@@ -33,7 +33,7 @@ from app.blackboard.exceptions import (
     SessionExpiredError,
 )
 from app.blackboard.parsers import AssignmentParser, CourseListParser, with_recomputed_timing_status
-from app.blackboard.parsers.common import is_navigable_url
+from app.blackboard.parsers.common import absolute_url, is_navigable_url
 from app.blackboard.provider import BlackboardProvider, ProviderHealth, SessionHandle
 
 logger = logging.getLogger("blackboard.provider.playwright")
@@ -390,7 +390,12 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         content" link — whose text matches "content" but whose href is
         just "#content"; page.goto() on that crashes rather than doing
         anything useful) instead of returning the first text match
-        regardless of whether it's an actual link to follow.
+        regardless of whether it's an actual link to follow. Returned as an
+        absolute URL — confirmed real UDEM course-menu links can be
+        relative (e.g. "/webapps/blackboard/content/listContent.jsp?...")
+        and page.goto() does NOT resolve those against the current page
+        itself; it needs a full URL or it raises the same "Cannot navigate
+        to invalid URL" error as a non-navigable href does.
         """
         try:
             links = page.locator("a").all()
@@ -405,14 +410,15 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                 continue
             href = link.get_attribute("href")
             if href and is_navigable_url(href):
-                return href
+                return absolute_url(self._settings.base_url, href) or href
         return None
 
     def _find_link_by_text(self, page, text: str) -> str | None:
         """Finds a link whose visible text contains `text` (case-insensitive
-        substring), skipping non-navigable hrefs the same way
-        _find_content_link does. Used by dump_course_html's follow_link_text
-        to drill into a specific named content area for inspection.
+        substring), skipping non-navigable hrefs and resolving to an
+        absolute URL the same way _find_content_link does. Used by
+        dump_course_html's follow_link_text to drill into a specific named
+        content area for inspection.
         """
         needle = text.strip().lower()
         try:
@@ -428,7 +434,7 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                 continue
             href = link.get_attribute("href")
             if href and is_navigable_url(href):
-                return href
+                return absolute_url(self._settings.base_url, href) or href
         return None
 
     def _resolve_course(self, course_id: str) -> Course:

@@ -93,6 +93,15 @@ presumably one level deeper, inside a content area like "Assessments" or
 named menu link to capture that page's real HTML for the next round of
 selector work.
 
+**Related fix (real run):** the first `--follow` attempt crashed —
+`page.goto()` on the matched link raised "Cannot navigate to invalid
+URL". Confirmed real UDEM course-menu links can be *relative*
+(`/webapps/blackboard/content/listContent.jsp?...`), and Playwright's
+`page.goto()` does not resolve a relative string against the current
+page the way a browser follows an `<a href>` — it needs a full URL.
+`_find_content_link()` and `_find_link_by_text()` now resolve every href
+to an absolute URL (`{base_url}` + the href) before returning it.
+
 ## Assignments — Ultra Course View (`parsers/ultra_course.py`)
 
 Not attempted. `UltraCourseParser` is a stub that returns `[]` with a

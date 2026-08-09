@@ -263,3 +263,66 @@ def test_dump_course_html_follow_link_text_not_found_reports_none(tmp_path, monk
     assert result.follow_link_text_requested == "Nonexistent Area"
     assert result.follow_link_result is None
     assert result.final_url == content_url  # stayed on the auto-followed content page
+
+
+def test_dump_course_html_resolves_relative_content_link_to_absolute(tmp_path, monkeypatch):
+    """Real UDEM crash: the course menu's link to "Course Content" itself
+    can be a relative href, and page.goto() does NOT resolve relative URLs
+    against the current page — it raises "Cannot navigate to invalid URL"
+    unless given a full URL. _find_content_link must return an absolute one."""
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
+    provider = make_provider_with_cached_course(tmp_path, course)
+    entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    relative_href = "/webapps/blackboard/content/listContent.jsp?course_id=_424872_1"
+    links = [_FakeLink(text="Course Content", href=relative_href)]
+    fake_page = _FakePage(html="<html><body>content</body></html>", url=entry_url, links=links)
+
+    @contextmanager
+    def fake_authenticated_browser():
+        yield (None, fake_page)
+
+    monkeypatch.setattr(provider, "_authenticated_browser", fake_authenticated_browser)
+
+    output_path = tmp_path / "course_424872.html"
+    result = provider.dump_course_html("_424872_1", output_path)
+
+    assert result.content_link_followed == "https://university.blackboard.com" + relative_href
+    assert result.content_link_followed in fake_page.goto_calls
+
+
+def test_dump_course_html_resolves_relative_follow_link_to_absolute(tmp_path, monkeypatch):
+    """The exact real crash: --follow "Assessments" found a relative href
+    ("/webapps/blackboard/content/listContent.jsp?...") and page.goto()
+    on it raised a Playwright protocol error."""
+    course = make_course(
+        id="_424872_1",
+        course_view=CourseView.ORIGINAL,
+        url="https://university.blackboard.com/ultra/courses/_424872_1/outline",
+    )
+    provider = make_provider_with_cached_course(tmp_path, course)
+    entry_url = "https://university.blackboard.com/webapps/blackboard/execute/courseMain?course_id=_424872_1"
+    content_url = "https://university.blackboard.com/webapps/blackboard/content/listContent.jsp?course_id=_424872_1"
+    relative_assessments_href = "/webapps/blackboard/content/listContent.jsp?course_id=_424872_1&content_id=_8713767_1&mode=reset"
+    links = [
+        _FakeLink(text="Course Content", href=content_url),
+        _FakeLink(text="Assessments", href=relative_assessments_href),
+    ]
+    fake_page = _FakePage(html="<html><body>assessments</body></html>", url=entry_url, links=links)
+
+    @contextmanager
+    def fake_authenticated_browser():
+        yield (None, fake_page)
+
+    monkeypatch.setattr(provider, "_authenticated_browser", fake_authenticated_browser)
+
+    output_path = tmp_path / "course_424872.html"
+    result = provider.dump_course_html("_424872_1", output_path, follow_link_text="Assessments")  # must not raise
+
+    expected_absolute = "https://university.blackboard.com" + relative_assessments_href
+    assert result.follow_link_result == expected_absolute
+    assert result.final_url == expected_absolute
+    assert relative_assessments_href not in fake_page.goto_calls  # never goto()'d the bare relative string
