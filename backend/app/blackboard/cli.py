@@ -11,6 +11,7 @@ purpose (Phase 2 scope). See backend/README.md for setup and usage.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import sys
 from zoneinfo import ZoneInfo
@@ -128,6 +129,37 @@ def debug_dump_courses_html() -> None:
     click.echo("Open it and copy the chunk around one of your course cards (course name")
     click.echo("or instructor text is fine to include — there's no login/session data in")
     click.echo("this file) so real selectors can replace the guessed ones.")
+
+
+@cli.command(name="debug-dump-url")
+@click.argument("url")
+def debug_dump_url(url: str) -> None:
+    """Save the raw HTML of any Blackboard URL (same institution only) to
+    a local file — e.g. a specific assignment's page, to check for a due
+    date not visible in the content list. Uses your already-saved session.
+    Read-only: just navigates and reads, submits nothing.
+    """
+    settings = load_settings()
+    provider = get_provider(settings)
+    dump = getattr(provider, "dump_url_html", None)
+    if dump is None:
+        click.echo(
+            "This command is only available with the Playwright provider "
+            "(current BLACKBOARD_PROVIDER_IMPL doesn't support it).",
+            err=True,
+        )
+        sys.exit(1)
+
+    slug = hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+    try:
+        path = dump(url, settings.debug_html_dir / f"url_{slug}.html")
+    except (BlackboardError, ValueError) as exc:
+        click.echo(f"Could not dump that URL: {exc}", err=True)
+        sys.exit(1)
+
+    click.echo(f"Saved to:\n{path}\n")
+    click.echo("Open it and share the chunk around the due date / relevant field so real")
+    click.echo("selectors can be built from it — no login/session data is in this file.")
 
 
 @cli.command(name="debug-dump-course-html")

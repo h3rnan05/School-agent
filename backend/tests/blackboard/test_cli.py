@@ -234,3 +234,47 @@ def test_debug_dump_course_html_unavailable_on_providers_without_it(monkeypatch,
 
     assert result.exit_code == 1
     assert "only available with the Playwright provider" in result.output
+
+
+class FakeProviderWithUrlDump(FakeProvider):
+    def dump_url_html(self, url, output_path):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text("<html>fake url dump</html>", encoding="utf-8")
+        return output_path
+
+
+def test_debug_dump_url_reports_saved_path(monkeypatch, settings):
+    fake = FakeProviderWithUrlDump()
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-url", "https://x/webapps/assignment/uploadAssignment"])
+
+    assert result.exit_code == 0
+    assert "Saved to:" in result.output
+
+
+def test_debug_dump_url_reports_value_error_from_host_check(monkeypatch, settings):
+    class FakeProviderRejectsUrl(FakeProvider):
+        def dump_url_html(self, url, output_path):
+            raise ValueError(f"Refusing to navigate to {url!r}: host mismatch.")
+
+    fake = FakeProviderRejectsUrl()
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-url", "https://attacker.example.com/steal"])
+
+    assert result.exit_code == 1
+    assert "Could not dump that URL" in result.output
+
+
+def test_debug_dump_url_unavailable_on_providers_without_it(monkeypatch, settings):
+    fake = FakeProvider()  # no dump_url_html method
+    monkeypatch.setattr(cli_module, "get_provider", lambda s: fake)
+    monkeypatch.setattr(cli_module, "load_settings", lambda: settings)
+
+    result = CliRunner().invoke(cli_module.cli, ["debug-dump-url", "https://x/some/page"])
+
+    assert result.exit_code == 1
+    assert "only available with the Playwright provider" in result.output

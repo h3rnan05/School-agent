@@ -301,6 +301,38 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
         output_path.write_text(html, encoding="utf-8")
         return output_path
 
+    def dump_url_html(self, url: str, output_path: Path) -> Path:
+        """Saves the raw HTML of an arbitrary same-host Blackboard URL to
+        disk, using the already-saved session. Read-only — just a GET
+        navigation, nothing is submitted or changed.
+
+        Added to inspect a specific item's detail page (e.g. a real
+        Blackboard Assignment's uploadAssignment URL, confirmed real from
+        `assignments` output) without needing to add a dedicated method
+        for every possible page type. Restricted to the configured
+        institution's own host — this is Blackboard inspection tooling,
+        not a general-purpose page fetcher.
+        """
+        target_host = urlparse(url).netloc
+        base_host = urlparse(self._settings.base_url).netloc
+        if target_host and target_host != base_host:
+            raise ValueError(
+                f"Refusing to navigate to {url!r}: host {target_host!r} does not match "
+                f"the configured institution ({base_host!r})."
+            )
+
+        with self._authenticated_browser() as (browser, page):
+            page.goto(url)
+            self._assert_logged_in(page)
+            self._wait_for_render(page)
+            html = page.content()
+            final_url = page.url
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html, encoding="utf-8")
+        logger.info("Saved %s (final URL: %s) to %s", url, final_url, output_path)
+        return output_path
+
     def dump_course_html(
         self,
         course_id: str,
