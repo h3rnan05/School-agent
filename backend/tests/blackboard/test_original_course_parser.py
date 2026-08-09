@@ -112,3 +112,36 @@ def test_menu_item_without_a_link_does_not_produce_a_warning_crash(load_fixture)
     html = load_fixture("course_menu_udem_palette.html")
     result = _parse(html)  # must not raise
     assert isinstance(result, list)
+
+
+def test_real_content_items_are_extracted_by_confirmed_id_prefix(load_fixture):
+    """Confirmed real UDEM markup (inside an actual content area): real
+    items use id="contentListItem:_XXX_1" / class="clearfix liItem read".
+    Toolbar buttons (secondaryButton, icon-only) in the same fixture must
+    be excluded, not produce "no extractable title" noise."""
+    html = load_fixture("course_content_udem_real_structure.html")
+    result = _parse(html)
+
+    titles = {a.title for a in result}
+    assert titles == {"Experiencias de aprendizaje 1er. Parcial", "Actividad integradora 2"}
+
+
+def test_real_item_with_no_due_date_field_set_is_correctly_no_due_date(load_fixture):
+    """Real UDEM finding: an instructor can write a deadline only in free
+    text ("entrega tu tarea en tiempo y forma") without ever setting
+    Blackboard's own Due Date field on the item. That's a genuinely
+    NO_DUE_DATE item, not a parser failure — must not be guessed at."""
+    html = load_fixture("course_content_udem_real_structure.html")
+    result = _parse(html)
+
+    activity = _by_title(result, "Actividad integradora 2")
+    assert activity.due_date is None
+    assert activity.due_date_status == DueDateStatus.NO_DUE_DATE
+
+
+def test_toolbar_buttons_are_excluded_not_logged_as_broken_items(load_fixture):
+    html = load_fixture("course_content_udem_real_structure.html")
+    result = _parse(html)
+    ids = {a.id for a in result}
+    assert "refreshMenuLink" not in ids
+    assert "courseMapButton" not in ids

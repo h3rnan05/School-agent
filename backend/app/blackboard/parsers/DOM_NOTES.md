@@ -102,6 +102,30 @@ page the way a browser follows an `<a href>` — it needs a full URL.
 `_find_content_link()` and `_find_link_by_text()` now resolve every href
 to an absolute URL (`{base_url}` + the href) before returning it.
 
+**RESOLVED — real content items found and confirmed (real run).**
+`--follow "Assessments"` landed on `listContent.jsp?...` — genuinely
+empty (`<div class="noItems container-empty">There is no content to
+display.</div>`, confirmed structure — a real signal, not a bug).
+`--follow "Unidad 1"` found real content: 3 items with
+`id="contentListItem:_8713781_1"` / `class="clearfix liItem read"` —
+this is the confirmed real item id/class, now the primary selector
+(`li[id^="contentListItem:" i]`, then `li.liItem`, ahead of the older
+generic guesses which stay as fallbacks). Two icon-only toolbar buttons
+(`<li id="refreshMenuLink" class="secondaryButton">`, "Refresh" /
+"Display Course Menu in a Window") also matched the broad `li[id]`
+fallback and are now explicitly excluded (`NON_CONTENT_CLASS_NAMES`).
+
+**Due dates: confirmed absent, not a parser miss.** One real item
+("Actividad integradora 2") had a full paragraph of instructions —
+"Forma de trabajo", "Tiempo estimado", "Valor / Ponderación: 20%-30%",
+step-by-step instructions — with a deadline only ever mentioned as
+prose ("entrega...de acuerdo a la fecha dictaminada"), never through
+Blackboard's own Due Date field. `due_date_status=NO_DUE_DATE` for that
+item is the correct result: **whether a due date is extractable depends
+on whether the instructor configured Blackboard's native due-date field
+for that item**, not on the parser. Some items/courses may simply never
+expose one this way.
+
 ## Assignments — Ultra Course View (`parsers/ultra_course.py`)
 
 Not attempted. `UltraCourseParser` is a stub that returns `[]` with a

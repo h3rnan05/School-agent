@@ -9,16 +9,19 @@ My Grades, custom instructor-named areas like "Unidad 1", "Assessments",
 etc.) as `<li id="paletteItem:_XXX_1">` elements — Blackboard's own
 internal name for course-menu items ("palette"). The old, broader
 `li[id]` selector matched those too, producing fake "assignments" with no
-due dates that were actually just navigation entries. Those are now
-explicitly excluded (see NON_CONTENT_ID_PREFIXES) rather than treated as
-content — an empty result on a menu/palette page is the honest, correct
-answer, not a selector failure.
+due dates that were actually just navigation entries. Those, and toolbar
+buttons like "Refresh" (`<li id="refreshMenuLink" class="secondaryButton">`,
+icon-only, no text), are now explicitly excluded (see NON_CONTENT_ID_PREFIXES
+/ NON_CONTENT_CLASS_NAMES) rather than treated as content.
 
-The real assignments/graded items are one level deeper, inside a specific
-content area (e.g. clicking "Unidad 1" or "Assessments") — that page's
-structure isn't confirmed yet. This parser's item-selector candidates are
-otherwise unchanged from Phase 2, validated only against synthetic
-fixtures. See parsers/DOM_NOTES.md and backend/README.md.
+CONFIRMED real content items (inside an actual content area, e.g. "Unidad
+1"): `<li id="contentListItem:_8713781_1" class="clearfix liItem read">`.
+That id prefix is now the primary selector. Confirmed real items can
+genuinely have no due date at all — not every selector miss, an
+instructor who never set Blackboard's Due Date field on an item (writing
+a deadline only in free-text instructions instead) produces a real item
+with `due_date_status=NO_DUE_DATE`, which is the correct result, not a bug.
+See parsers/DOM_NOTES.md and backend/README.md.
 """
 from __future__ import annotations
 
@@ -48,6 +51,8 @@ from app.blackboard.parsers.common import (
 logger = logging.getLogger("blackboard.parsers.original_course")
 
 ASSIGNMENT_ITEM_SELECTORS = [
+    'li[id^="contentListItem:" i]',  # confirmed real UDEM markup, Phase 2.1
+    "li.liItem",  # confirmed real UDEM class, same markup
     '[role="listitem"]',
     "li.contentListItem",
     "li[id]",
@@ -60,10 +65,18 @@ ASSIGNMENT_ITEM_SELECTORS = [
 # regardless of which broader selector above happens to also match them.
 NON_CONTENT_ID_PREFIXES = ("paletteitem:",)
 
+# Confirmed real UDEM markup: toolbar buttons ("Refresh", "Display Course
+# Menu in a Window") are icon-only <li class="secondaryButton"> with no
+# text — matched by the broad li[id] fallback but never real content.
+NON_CONTENT_CLASS_NAMES = ("secondarybutton",)
+
 
 def _is_menu_item(item: Tag) -> bool:
     item_id = (attr_str(item, "id") or "").lower()
-    return any(item_id.startswith(prefix) for prefix in NON_CONTENT_ID_PREFIXES)
+    if any(item_id.startswith(prefix) for prefix in NON_CONTENT_ID_PREFIXES):
+        return True
+    classes = (attr_str(item, "class") or "").lower().split()
+    return any(css_class in NON_CONTENT_CLASS_NAMES for css_class in classes)
 
 
 class OriginalCourseParser:
