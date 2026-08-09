@@ -1,10 +1,11 @@
-# Backend — Blackboard module (Phase 2 / 2.1)
+# Backend — Blackboard module (Phase 2 / 2.1) + Telegram bot (Phase 3)
 
-This is the only module implemented so far: read-only access to Blackboard
-via `BlackboardProvider` / `PlaywrightBlackboardProvider`. Nothing here
-touches PostgreSQL, Google Calendar, Claude, Telegram, or the frontend —
-see [`../ARCHITECTURE.md`](../ARCHITECTURE.md) for how this fits into the
-full system and why those are separate, later phases.
+Two things live here now: read-only access to Blackboard via
+`BlackboardProvider` / `PlaywrightBlackboardProvider` (Phase 2/2.1), and a
+Telegram notifier + chat bot on top of it (Phase 3, see below). Nothing
+here touches PostgreSQL, Google Calendar, or a frontend — see
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md) for how this fits into the full
+system and why those are separate, later phases.
 
 ## Important: this must be run on YOUR machine, not in a cloud session
 
@@ -51,6 +52,11 @@ specific institution:
 | `BLACKBOARD_HEADLESS` | no | `true` | Set to `false` to watch the browser during `courses`/`assignments`/`upcoming` too (useful for debugging selectors). `login` always runs headful regardless of this setting. |
 | `BLACKBOARD_LOGIN_TIMEOUT_SECONDS` | no | `600` | How long `login` waits for you to finish manual SSO/MFA. |
 | `BLACKBOARD_PROVIDER_IMPL` | no | `playwright` | `playwright` or `official` (the latter is an intentional stub today). |
+| `TELEGRAM_BOT_TOKEN` | Phase 3 only | — | From @BotFather. See "Phase 3 — Telegram bot" below. |
+| `TELEGRAM_CHAT_ID` | Phase 3 only | — | Your numeric Telegram chat id — also doubles as an allowlist, see below. |
+| `ANTHROPIC_API_KEY` | Phase 3 chat only | — | From console.anthropic.com. Only needed for free-form chat replies, not for `/tareas`/`/proxima`/`/resumen` or the notifier. |
+
+A `.env.example` is provided — copy it to `.env` (gitignored) and fill in real values instead of `export`ing everything by hand each session.
 
 Example (UDEM):
 
@@ -223,14 +229,100 @@ All of these run against fixture HTML and a fake provider — none of them
 open a real browser or touch a real Blackboard instance, so they run the
 same in CI as on your machine.
 
+## Phase 3 — Telegram bot
+
+Two independent processes sit on top of the Blackboard module, both
+strictly read-only against Blackboard (they only ever call
+`BlackboardProvider` read methods — see `test_provider_safety.py`):
+
+- **Notifier** (`app/notifier/`): a one-shot check, meant to be run
+  periodically (e.g. every 30 min via launchd), that pushes a Telegram
+  message for any assignment that's new or whose due date changed since
+  last time. Nothing else — a title-only change, for instance, doesn't
+  notify (see `notifier/diff.py`).
+- **Bot** (`app/telegram_bot/`): a long-polling process that answers your
+  messages in Telegram — fixed commands (`/tareas`, `/proxima`,
+  `/resumen <n>`) that don't need Claude at all, plus free-form chat once
+  you've picked an assignment with `/resumen`, which does call the
+  Anthropic API.
+
+Both reuse your already-saved, encrypted Blackboard session headlessly —
+same as `courses`/`assignments`/`upcoming` today, no visible browser
+needed unless the session has actually expired (in which case they notify
+you to re-run `blackboard login` rather than failing silently).
+
+**Honest limitation**: `Assignment.description`/`.instructions` are not
+populated yet (see "An honest note on the parsers" above) — the bot's
+system prompt tells Claude this explicitly so it never invents what an
+assignment asks for. Free-form chat today can only reason about
+title/course/due date/points/url; if you want help with the actual
+content, paste it into the chat yourself.
+
+### Setup
+
+1. Create a bot via **@BotFather** in Telegram (`/newbot`), get your
+   `TELEGRAM_BOT_TOKEN`.
+2. Message your new bot once, then read your `TELEGRAM_CHAT_ID` from
+   `https://api.telegram.org/bot<token>/getUpdates` (look for
+   `"chat":{"id":`).
+3. Create an `ANTHROPIC_API_KEY` at console.anthropic.com (set a usage
+   limit there too — cheap insurance).
+4. Put all three into `backend/.env` (see `.env.example`).
+
+### Running manually (test before automating)
+
+```bash
+source .venv/bin/activate
+source .env
+python -m app.notifier run-once     # one check; first run only saves a baseline, sends nothing
+python -m app.telegram_bot run      # long-running; Ctrl-C to stop
+```
+
+Message your bot `/start` while `telegram_bot run` is active to confirm
+it responds.
+
+### Running automatically (launchd)
+
+macOS doesn't have `cron` enabled by default — `launchd` is the native
+equivalent and also handles auto-restart. Two templates are provided in
+`docs/launchd/`:
+
+```bash
+mkdir -p logs
+BACKEND_DIR="$(pwd)"
+sed "s|__BACKEND_DIR__|$BACKEND_DIR|g" docs/launchd/com.schoolagent.notifier.plist \
+  > ~/Library/LaunchAgents/com.schoolagent.notifier.plist
+sed "s|__BACKEND_DIR__|$BACKEND_DIR|g" docs/launchd/com.schoolagent.telegrambot.plist \
+  > ~/Library/LaunchAgents/com.schoolagent.telegrambot.plist
+
+launchctl load ~/Library/LaunchAgents/com.schoolagent.notifier.plist
+launchctl load ~/Library/LaunchAgents/com.schoolagent.telegrambot.plist
+```
+
+Logs land in `backend/logs/` (gitignored). To stop either:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.schoolagent.notifier.plist
+launchctl unload ~/Library/LaunchAgents/com.schoolagent.telegrambot.plist
+```
+
+Both wrapper scripts (`scripts/run_notifier.sh`, `scripts/run_bot.sh`)
+`source .env` themselves, since launchd doesn't inherit your shell
+profile — nothing needs to be duplicated into the `.plist` files
+themselves.
+
+**Real limitation, by design (see architecture discussion)**: this only
+runs while your Mac is on and connected to the internet — it's a local
+background process, not a hosted server, so your Blackboard session never
+has to leave your machine.
+
 ## What's out of scope here (by design)
 
-This module does **not**: connect to PostgreSQL, call Google Calendar,
-call Claude, send Telegram notifications, or expose a frontend. It also
-does not download attachment file contents (only filename/URL/type
-references), does not fetch full assignment detail pages
-(description/instructions are left unset from the list view), and does
-not submit/edit/delete anything on Blackboard — see
+This module does **not**: connect to PostgreSQL, call Google Calendar, or
+expose a frontend. It also does not download attachment file contents
+(only filename/URL/type references), does not fetch full assignment
+detail pages (description/instructions are left unset from the list
+view), and does not submit/edit/delete anything on Blackboard — see
 `tests/blackboard/test_provider_safety.py` for that guarantee enforced in
 code, not just documentation. See `ARCHITECTURE.md` for the full phased
 plan.

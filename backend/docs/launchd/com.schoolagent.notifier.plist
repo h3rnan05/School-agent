@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.schoolagent.notifier</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__BACKEND_DIR__/scripts/run_notifier.sh</string>
+    </array>
+    <!-- Runs once at load, then every 1800s (30 min). Each run is
+         independent and stateless beyond the shared snapshot cache, so a
+         missed or overlapping run is harmless — see notifier/cli.py. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>StandardOutPath</key>
+    <string>__BACKEND_DIR__/logs/notifier.log</string>
+    <key>StandardErrorPath</key>
+    <string>__BACKEND_DIR__/logs/notifier.error.log</string>
+</dict>
+</plist>

@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import sys
-from zoneinfo import ZoneInfo
 
 import click
 
@@ -23,6 +22,7 @@ from app.blackboard.config import load_settings
 from app.blackboard.dto import Assignment, Course
 from app.blackboard.exceptions import BlackboardError
 from app.blackboard.factory import get_provider
+from app.blackboard.formatting import format_due_date_parts, format_points
 from app.blackboard.snapshot_store import SnapshotStore
 
 
@@ -268,33 +268,6 @@ def upcoming(days: int, include_overdue: bool, include_no_due_date: bool) -> Non
         _print_assignments(result.no_due_date, course_map)
 
 
-def _format_due_date_parts(assignment: Assignment) -> tuple[str, str]:
-    """Returns (date, time) as separate display strings, in the assignment's
-    OWN timezone (the one it was interpreted with — see TIMEZONE in the
-    output), not UTC. due_date is stored internally as UTC for consistent
-    comparisons (bucketing, change detection), but showing UTC to a human
-    would silently shift the wall-clock time Blackboard actually displayed
-    — exactly the "silent conversion" Phase 2.1 said not to do.
-    """
-    if assignment.due_date is not None:
-        try:
-            local = assignment.due_date.astimezone(ZoneInfo(assignment.timezone))
-        except Exception:  # noqa: BLE001 - unknown/invalid tz name, fall back to UTC rather than crash
-            local = assignment.due_date
-        return (local.strftime("%B %d, %Y"), local.strftime("%I:%M %p"))
-    if assignment.due_date_status.value == "UNPARSEABLE":
-        return ("DATA_UNAVAILABLE", "DATA_UNAVAILABLE")
-    return ("(no due date)", "-")
-
-
-def _format_points(assignment: Assignment) -> str:
-    if assignment.points is not None:
-        return f"{assignment.points:g} points"
-    if assignment.points_status.value == "DATA_UNAVAILABLE":
-        return "DATA_UNAVAILABLE"
-    return "(not specified)"
-
-
 def _print_assignments(
     found: tuple[Assignment, ...] | list[Assignment],
     course_map: dict[str, Course],
@@ -304,7 +277,7 @@ def _print_assignments(
         return
     for assignment in found:
         course = course_map.get(assignment.course_id)
-        due_date, time_ = _format_due_date_parts(assignment)
+        due_date, time_ = format_due_date_parts(assignment)
         click.echo(f"COURSE: {course.name if course else assignment.course_id}")
         click.echo(f"ASSIGNMENT: {assignment.title}")
         click.echo(f"DUE DATE: {due_date}")
@@ -313,7 +286,7 @@ def _print_assignments(
         # necessarily one Blackboard displayed explicitly — see
         # parsers/common.py's parse_due_date and backend/README.md.
         click.echo(f"TIMEZONE: {assignment.timezone}")
-        click.echo(f"POINTS: {_format_points(assignment)}")
+        click.echo(f"POINTS: {format_points(assignment)}")
         click.echo(f"URL: {assignment.url}")
         click.echo(f"COURSE VIEW: {course.course_view.value if course else 'UNKNOWN'}")
         click.echo(f"STATUS: {assignment.timing_status.value}")

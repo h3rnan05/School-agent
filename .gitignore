@@ -14,6 +14,7 @@ htmlcov/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 *.key
 
 # Blackboard session data — NEVER commit auth material
@@ -21,6 +22,9 @@ htmlcov/
 **/storage_state*.json
 **/*.session.json
 **/debug_screenshots/
+
+# launchd logs (Phase 3 notifier/bot)
+backend/logs/
 
 # Node / frontend (future phases)
 node_modules/

@@ -5,16 +5,22 @@ detectar assignments próximos a vencer, sincronizarlos con Google Calendar,
 y preparar material de apoyo (research, outlines, drafts) con revisión humana
 obligatoria antes de cualquier entrega.
 
-## Estado del proyecto: Fase 2.1 — Validación contra Blackboard real (UDEM), pendiente de correr localmente
+## Estado del proyecto: Fase 3 — Notificador + bot de Telegram, sobre Blackboard real (UDEM)
 
-Arquitectura (Fase 1.5) **aprobada**. Módulo de Blackboard construido y
-extendido con los datos reales de UDEM (`cursos-udem.blackboard.com`,
-Ultra Experience, cursos individuales en Original Course View):
+Arquitectura (Fase 1.5) **aprobada**. Módulo de Blackboard (Fase 2/2.1)
+construido y validado contra UDEM (`cursos-udem.blackboard.com`, Ultra
+Experience, cursos individuales en Original Course View):
 [`backend/`](./backend) contiene `BlackboardProvider` /
 `PlaywrightBlackboardProvider`, con parsers separados por tipo de curso
 (`CourseListParser`, `OriginalCourseParser`, `UltraCourseParser`,
 `AssignmentParser`) — acceso **solo lectura**, sin guardar tu contraseña
-nunca.
+nunca. Sobre eso, Fase 3 agrega `app/notifier/` (avisa por Telegram cuando
+hay una tarea nueva o cambia una fecha) y `app/telegram_bot/` (comandos
+`/tareas`, `/proxima`, `/resumen` + chat libre con Claude sobre una tarea
+elegida) — ambos corren localmente en tu Mac vía `launchd`, nunca en un
+servidor en la nube, y siguen siendo estrictamente de solo lectura hacia
+Blackboard. Ver [`backend/README.md`](./backend/README.md), sección "Phase
+3 — Telegram bot", para el setup completo.
 
 **Importante**: el login interactivo (`blackboard login`) no se puede
 ejecutar dentro de una sesión de Claude Code en la nube — no hay pantalla
@@ -23,7 +29,8 @@ máquina; ver [`backend/README.md`](./backend/README.md), sección "this
 must be run on YOUR machine", para el detalle y los siguientes pasos.
 
 Deliberadamente fuera de esta fase (según lo pedido): PostgreSQL, Google
-Calendar, Claude/IA, Telegram, frontend, y cualquier tipo de submission.
+Calendar, frontend, y cualquier tipo de submission — el bot solo lee y
+conversa, nunca sube ni completa nada en Blackboard.
 
 `ARCHITECTURE.md` sigue siendo la referencia completa del sistema. Pasó por
 una revisión técnica tipo Senior Staff Engineer que, entre otras cosas,
@@ -64,13 +71,14 @@ del flujo siempre requiere aprobación humana explícita.
 
 ## Próximos pasos
 
-1. Corré `blackboard login / courses / assignments / upcoming` en tu
-   máquina (no en esta sesión) siguiendo `backend/README.md`.
-2. Si `courses` o `assignments` viene vacío o con datos incorrectos, es
-   casi seguro un tema de selectores — pasame lo que pide
-   `backend/app/blackboard/parsers/DOM_NOTES.md` (HTML de una sola tarjeta
-   de curso, sin necesidad de compartir tu sesión ni contraseña) y lo
-   ajusto con evidencia real en vez de adivinar de nuevo.
-3. No avanzo a la siguiente fase (Google Calendar, IA, notificaciones,
-   frontend) hasta que confirmes que el pipeline completo funciona contra
-   tu Blackboard real.
+1. En tu máquina: `git pull`, después seguí "Phase 3 — Telegram bot" en
+   `backend/README.md` para correr `python -m app.notifier run-once` y
+   `python -m app.telegram_bot run` manualmente primero.
+2. Confirmá que `/start`, `/tareas`, `/proxima` y `/resumen <n>` responden
+   bien en Telegram, y que una vez que aparezca una tarea real con fecha
+   de entrega el notificador te avisa.
+3. Si eso funciona, instalá los `launchd` agents (también documentado ahí)
+   para que corra solo, sin que tengas que dejar una terminal abierta.
+4. No avanzo a la siguiente fase (Google Calendar, submission asistido)
+   hasta que confirmes que esto funciona de punta a punta contra tu
+   Blackboard real.
