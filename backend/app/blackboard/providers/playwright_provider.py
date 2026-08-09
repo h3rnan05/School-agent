@@ -19,6 +19,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from app.blackboard.auth import SessionStore, build_session_handle, wait_for_manual_login
 from app.blackboard.browser import ManagedBrowser, with_retries
@@ -81,6 +82,11 @@ LOGIN_PAGE_URL_HINTS = (
 
 # Candidate link text patterns for finding a course's assignment/content area.
 CONTENT_LINK_PATTERN = re.compile(r"assignments?|content|coursework", re.IGNORECASE)
+
+# Safety cap on how many content-area pages get_assignments() will visit per
+# course — a course's own left-nav menu is naturally small, but this bounds
+# the worst case instead of trusting that assumption unconditionally.
+MAX_CONTENT_AREA_PAGES = 25
 
 __all__ = ["CourseDumpResult", "PlaywrightBlackboardProvider", "diff_assignments"]
 
@@ -190,15 +196,66 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
                     page.goto(content_href)
                     self._wait_for_render(page)
 
-                html = page.content()
-                return self._assignment_parser.parse(
-                    html,
+                return self._collect_assignments_from_course_menu(page, course)
+
+        return with_retries(_fetch, self._settings.max_retries, f"get_assignments({course_id})")
+
+    def _collect_assignments_from_course_menu(self, page, course: Course) -> list[Assignment]:
+        """Parses whatever page get_assignments() landed on, then visits
+        every content-area link found in the course's own left-nav menu
+        and aggregates assignments across all of them.
+
+        Confirmed real UDEM finding: the course's persistent menu mixes
+        content-area links (Blackboard's own listContent.jsp+content_id
+        pattern — e.g. "Unidad 1") with tool links (launchLink.jsp,
+        Discussions/Announcements/My Grades/etc.) and external links
+        (different domains entirely, e.g. a library catalog). Only
+        confirmed content-area links are visited — see
+        _looks_like_content_area_url. This is one level of expansion
+        (menu → content area), matching what's been validated; it doesn't
+        recurse into sub-folders, which would require telling a "folder"
+        link apart from a leaf item's own link, and those look identical
+        by URL pattern alone in the evidence gathered so far.
+        """
+        landing_html = page.content()
+        all_assignments = list(
+            self._assignment_parser.parse(
+                landing_html,
+                course=course,
+                base_url=self._settings.base_url,
+                timezone=self._settings.timezone,
+            )
+        )
+
+        for i, area_url in enumerate(self._find_content_area_links(page)):
+            if i >= MAX_CONTENT_AREA_PAGES:
+                logger.warning(
+                    "get_assignments(%s): hit the %d content-area page cap; "
+                    "some menu areas were not visited",
+                    course.id,
+                    MAX_CONTENT_AREA_PAGES,
+                )
+                break
+            page.goto(area_url)
+            self._wait_for_render(page)
+            area_html = page.content()
+            all_assignments.extend(
+                self._assignment_parser.parse(
+                    area_html,
                     course=course,
                     base_url=self._settings.base_url,
                     timezone=self._settings.timezone,
                 )
+            )
 
-        return with_retries(_fetch, self._settings.max_retries, f"get_assignments({course_id})")
+        seen_ids: set[str] = set()
+        deduped: list[Assignment] = []
+        for assignment in all_assignments:
+            if assignment.id in seen_ids:
+                continue
+            seen_ids.add(assignment.id)
+            deduped.append(assignment)
+        return deduped
 
     def get_upcoming_assignments(
         self,
@@ -436,6 +493,52 @@ class PlaywrightBlackboardProvider(BlackboardProvider):
             if href and is_navigable_url(href):
                 return absolute_url(self._settings.base_url, href) or href
         return None
+
+    def _find_content_area_links(self, page) -> list[str]:
+        """Finds content-area links in the course's persistent left-nav
+        menu (confirmed real UDEM markup: `.navPaletteContent`), scoped to
+        that container specifically so a content item's own in-page link
+        (which can look identical by URL pattern — see
+        _looks_like_content_area_url's docstring) is never picked up as if
+        it were another menu entry to crawl.
+        """
+        try:
+            links = page.locator(".navPaletteContent a").all()
+        except Exception:  # noqa: BLE001
+            return []
+        found: list[str] = []
+        for link in links:
+            try:
+                href = link.get_attribute("href")
+            except Exception:  # noqa: BLE001
+                continue
+            if not href or not is_navigable_url(href):
+                continue
+            absolute = absolute_url(self._settings.base_url, href) or href
+            if self._looks_like_content_area_url(absolute) and absolute not in found:
+                found.append(absolute)
+        return found
+
+    def _looks_like_content_area_url(self, url: str) -> bool:
+        """Confirmed real UDEM pattern: content-area menu links
+        (e.g. "Unidad 1") point to listContent.jsp with a content_id query
+        param, on the institution's own host. Tool links (Discussions,
+        Announcements, My Grades, Zoom, ...) use launchLink.jsp with
+        tool_type=TOOL instead, and external resources (library catalogs,
+        support sites) point to a different host entirely — neither is
+        content to crawl. Individual content items *also* use
+        listContent.jsp+content_id for their own in-page link (confirmed
+        real: "Actividad integradora 2"'s link matches this same pattern),
+        which is exactly why this is only ever applied within the course
+        menu (_find_content_area_links), never to arbitrary page links.
+        """
+        parsed = urlparse(url)
+        base_host = urlparse(self._settings.base_url).netloc
+        if parsed.netloc and parsed.netloc != base_host:
+            return False
+        if "listcontent.jsp" not in parsed.path.lower():
+            return False
+        return "content_id" in parse_qs(parsed.query)
 
     def _resolve_course(self, course_id: str) -> Course:
         if self._course_cache is None or course_id not in self._course_cache:

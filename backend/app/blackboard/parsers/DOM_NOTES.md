@@ -126,6 +126,41 @@ on whether the instructor configured Blackboard's native due-date field
 for that item**, not on the parser. Some items/courses may simply never
 expose one this way.
 
+## Automatic content-area crawl (`providers/playwright_provider.py`)
+
+Manual `--follow` testing showed `get_assignments()`/`upcoming` couldn't
+find real content on their own — they landed on the course menu and
+stopped there, since nothing auto-navigates into a custom-named area like
+"Unidad 1". Confirmed real evidence made an automatic crawl possible
+without guessing:
+
+- Content-area menu links: `listContent.jsp?...&content_id=...`, same
+  host as the institution (confirmed: "Unidad 1", "Assessments").
+- Tool links: `launchLink.jsp?...&tool_type=TOOL` (confirmed: Discussions,
+  Announcements, My Grades, Zoom, "Unidad 5" turned out to be a tool too —
+  not every "Unidad N"-named entry is a content folder, so this is
+  classified by URL pattern, never by name).
+- External links: different host entirely (confirmed: a library catalog,
+  a support site).
+
+`PlaywrightBlackboardProvider._collect_assignments_from_course_menu()`
+now scans the course's `.navPaletteContent` menu, visits every link
+matching the confirmed content-area pattern (`_looks_like_content_area_url`),
+parses each with `OriginalCourseParser`, and aggregates + dedupes by
+assignment id — bounded by `MAX_CONTENT_AREA_PAGES` (25) as a safety cap.
+This is one level of expansion (menu → content area); it does not recurse
+into sub-folders, since a folder link and a leaf item's own link look
+identical by URL pattern in the evidence gathered so far (confirmed:
+"Actividad integradora 2"'s own link is also a `listContent.jsp
++content_id` URL) — recursing blindly there would require guessing which
+is which.
+
+**Still to confirm**: this crawl has been validated structurally (menu
+classification, aggregation, dedup, cap) but not yet against a real course
+that actually has an item with Blackboard's Due Date field configured —
+run `blackboard upcoming` for real once one exists to confirm the due-date
+extraction path end-to-end, not just item discovery.
+
 ## Assignments — Ultra Course View (`parsers/ultra_course.py`)
 
 Not attempted. `UltraCourseParser` is a stub that returns `[]` with a

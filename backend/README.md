@@ -113,6 +113,14 @@ Lists assignments for a single course (use a `course_id` from the
 for `ULTRA` (currently a stub — see below), and a disclosed best-effort
 attempt with `OriginalCourseParser` for `UNKNOWN`.
 
+For `ORIGINAL` courses, this automatically visits every content-area link
+in the course's own menu (e.g. "Unidad 1", "Unidad 2") and aggregates
+results — it does not just parse whatever page it first lands on. Tool
+links (Discussions, Announcements, My Grades, ...) and external links are
+recognized and skipped, never visited. See
+`app/blackboard/parsers/DOM_NOTES.md` for exactly how that classification
+works and what's confirmed vs still unverified.
+
 ```bash
 python -m app.blackboard upcoming
 python -m app.blackboard upcoming --days 14
